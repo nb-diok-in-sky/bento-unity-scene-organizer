@@ -1,0 +1,30 @@
+# Unity / IDE generated files
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+.vs/
+.idea/
+*.csproj
+*.sln
+*.user
+*.pidb
+*.booproj
+
+# Local AI/MCP configuration and secrets
+.mcp.json
+.claude/settings.local.json
+
+# Build and package outputs
+Build/
+Builds/
+*.unitypackage
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local source backups created during migration
+_backup_*/
+
