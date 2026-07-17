@@ -16,6 +16,13 @@ namespace Bento
         Other
     }
 
+    enum VariantTextureDisposition
+    {
+        CopyCandidate,
+        SharedShaderSupport,
+        RuntimeInternal
+    }
+
     [Serializable]
     class ResourceVariantPreset
     {
@@ -78,9 +85,9 @@ namespace Bento
         public string propertyName;
         public string propertyDescription;
         public VariantTextureKind kind;
+        public VariantTextureDisposition disposition;
         public bool willCopy;
         public string reason;
-        public bool isRuntimeTexture;
     }
 
     class ResourceVariantMaterialPlan

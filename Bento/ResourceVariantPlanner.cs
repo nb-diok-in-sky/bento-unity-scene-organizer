@@ -46,9 +46,9 @@ namespace Bento
                 {
                     source = material,
                     sourcePath = materialPath,
-                    willCopy = _settings.copyMaterials && IsCopyableAssetPath(materialPath) && !IsExcluded(materialPath)
+                    willCopy = true,
+                    reason = string.Empty
                 };
-                materialPlan.reason = GetSkipReason(_settings.copyMaterials, materialPath);
                 AnalyzeTextures(material, materialPlan, plan);
                 objectPlan.materials.Add(materialPlan);
             }
@@ -67,10 +67,12 @@ namespace Bento
 
                 string description = ShaderUtil.GetPropertyDescription(material.shader, propertyIndex);
                 string texturePath = AssetDatabase.GetAssetPath(texture);
-                bool isRuntimeTexture = string.IsNullOrEmpty(texturePath);
+                var disposition = ResourceVariantTextureClassifier.GetDisposition(material.shader, propertyName, description, texture);
                 var kind = ResourceVariantTextureClassifier.Classify(material.shader, propertyIndex, propertyName, description, texture);
                 bool kindEnabled = IsTextureKindEnabled(kind);
-                bool willCopy = _settings.copyTextures && materialPlan.willCopy && kindEnabled && IsCopyableAssetPath(texturePath) && !IsExcluded(texturePath);
+                bool willCopy = disposition == VariantTextureDisposition.CopyCandidate &&
+                                _settings.copyTextures && materialPlan.willCopy && kindEnabled &&
+                                IsCopyableAssetPath(texturePath) && !IsExcluded(texturePath);
                 materialPlan.textures.Add(new ResourceVariantTexturePlan
                 {
                     source = texture,
@@ -78,11 +80,11 @@ namespace Bento
                     propertyName = propertyName,
                     propertyDescription = description,
                     kind = kind,
+                    disposition = disposition,
                     willCopy = willCopy,
-                    reason = willCopy ? string.Empty : GetTextureSkipReason(materialPlan, kindEnabled, texturePath),
-                    isRuntimeTexture = isRuntimeTexture
+                    reason = willCopy ? string.Empty : GetTextureSkipReason(materialPlan, kindEnabled, texturePath, disposition)
                 });
-                if (kind == VariantTextureKind.Other && !isRuntimeTexture)
+                if (kind == VariantTextureKind.Other && disposition == VariantTextureDisposition.CopyCandidate)
                     plan.warnings.Add($"无法确定贴图语义：{material.name}.{propertyName} → {texture.name}，按“其他”设置处理。");
             }
         }
@@ -110,21 +112,18 @@ namespace Bento
                 path.StartsWith(folder.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase));
         }
 
-        string GetSkipReason(bool enabled, string path)
+        string GetTextureSkipReason(
+            ResourceVariantMaterialPlan materialPlan,
+            bool kindEnabled,
+            string path,
+            VariantTextureDisposition disposition)
         {
-            if (!enabled) return "未勾选";
-            if (IsExcluded(path)) return "公共目录排除";
-            if (!IsCopyableAssetPath(path)) return "内置/Package/运行时资源";
-            return string.Empty;
-        }
-
-        string GetTextureSkipReason(ResourceVariantMaterialPlan materialPlan, bool kindEnabled, string path)
-        {
+            if (disposition == VariantTextureDisposition.RuntimeInternal) return "Shader 运行时内部纹理，保留引用";
+            if (disposition == VariantTextureDisposition.SharedShaderSupport) return "Shader 公共辅助纹理，保留引用";
             if (!_settings.copyTextures) return "未勾选贴图复制";
             if (!materialPlan.willCopy) return "材质保持共享";
             if (!kindEnabled) return "该贴图类型未勾选";
             if (IsExcluded(path)) return "公共目录排除";
-            if (string.IsNullOrEmpty(path)) return "Shader 运行时内部纹理，保留引用";
             if (!IsCopyableAssetPath(path)) return "内置/Package/运行时资源";
             return string.Empty;
         }

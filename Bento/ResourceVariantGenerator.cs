@@ -56,6 +56,7 @@ namespace Bento
                 var savedPrefab = PrefabUtility.SaveAsPrefabAsset(temporaryObject, prefabPath);
                 if (savedPrefab == null) throw new InvalidOperationException($"Prefab 保存失败：{prefabPath}");
                 AddCreatedAsset(result, prefabPath, result.createdPrefabs);
+                ValidateMaterialIsolation(savedPrefab, objectPlan);
                 result.sourceRecords.Add(BuildSourceRecord(objectPlan, result, prefabPath, materialStartIndex, textureStartIndex));
                 if (_settings.replaceSceneObjects) result.replacements.Add(ReplaceSceneObject(objectPlan.sourceObject, savedPrefab));
             }
@@ -157,6 +158,20 @@ namespace Bento
                 materialPaths = result.createdMaterials.Skip(materialStartIndex).ToList(),
                 texturePaths = result.createdTextures.Skip(textureStartIndex).ToList()
             };
+        }
+
+        static void ValidateMaterialIsolation(GameObject prefab, ResourceVariantObjectPlan objectPlan)
+        {
+            var sourceMaterials = new HashSet<Material>(objectPlan.materials.Select(plan => plan.source));
+            foreach (var renderer in prefab.GetComponentsInChildren<Renderer>(true))
+            foreach (var material in renderer.sharedMaterials)
+            {
+                if (material != null && sourceMaterials.Contains(material))
+                {
+                    throw new InvalidOperationException(
+                        $"材质隔离失败：新 Prefab {prefab.name}/{renderer.name} 仍引用原材质 {material.name}。");
+                }
+            }
         }
 
         static void RunHealthCheck(ResourceVariantGenerationResult result)

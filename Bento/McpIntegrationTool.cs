@@ -43,6 +43,11 @@ namespace Bento
             }
 
             EditorGUILayout.Space(6);
+            if (GUILayout.Button("导出当前场景完整 Hierarchy JSON", GUILayout.Height(30)))
+            {
+                string path = SceneHierarchySnapshotService.ExportLoadedScenes();
+                EditorUtility.DisplayDialog("Hierarchy 已导出", path, "确定");
+            }
             if (GUILayout.Button("打开 MCP for Unity 主窗口", GUILayout.Height(34)))
                 MCPForUnityEditorWindow.ShowWindow();
             if (GUILayout.Button("打开 MCP 本地配置向导", GUILayout.Height(30)))
@@ -50,7 +55,7 @@ namespace Bento
 
             EditorGUILayout.Space(6);
             EditorGUILayout.HelpBox(
-                "AI 可调用：读取 Hierarchy/Project 选择、场景健康检查、资源变体干运行、安全移动计划分析。\n" +
+                "AI 可调用：读取完整 Hierarchy、Hierarchy/Project 选择、场景健康检查、资源变体干运行、安全移动计划分析。\n" +
                 "生成、移动、删除 Project 资源仍需你在 Unity 窗口内确认，AI 没有直接执行接口。",
                 MessageType.None);
         }

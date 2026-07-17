@@ -46,4 +46,12 @@ namespace Bento
         public string createdAtUtc;
         public List<AssetMoveHistoryEntry> moves = new List<AssetMoveHistoryEntry>();
     }
+
+    [Serializable]
+    public class AssetMoveManifest
+    {
+        public string createdAtUtc;
+        public string projectRoot;
+        public List<AssetMoveHistoryEntry> moves = new List<AssetMoveHistoryEntry>();
+    }
 }

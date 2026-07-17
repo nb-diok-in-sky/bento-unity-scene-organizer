@@ -1,4 +1,7 @@
-﻿using UnityEditor;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEditor;
 using UnityEngine;
 
 namespace Bento
@@ -6,114 +9,182 @@ namespace Bento
     public class BentoWindow : EditorWindow
     {
         int _mainTab;
+        int _groupTab;
         int _materialTab;
-        SharedContext _ctx;
-        ShaderReplaceTab _shaderTab;
-        TextureScanTab _scanTab;
-        TextureRenameTab _renameTab;
-        MaterialFillTab _fillTab;
-        TagLayerTab _tagLayerTab;
-        AutoProcessTab _autoTab;
-        MaterialRepairTab _repairTab;
-        PrefabReplacer _prefabReplacer;
-        HierarchyRenameTool _renameTool;
-        ProjectFolderFavoritesTool _folderFavoritesTool;
-        ResourceVariantTool _resourceVariantTool;
-        McpIntegrationTool _mcpIntegrationTool;
-        SafeAssetMoveTool _safeAssetMoveTool;
-
-        static readonly string[] MainTabNames = { "材质工具", "预制体替换", "资源变体", "资产移动", "批量重命名", "文件夹收藏", "AI/MCP" };
-        static readonly string[] MaterialTabNames = { "Shader 替换", "贴图扫描", "贴图改名", "填充材质球", "Tag/Layer", "一键处理", "材质修复" };
+        List<IBentoPage> _pages;
+        string[] _pageNames;
+        string[] _groupNames;
+        List<IBentoPage> _materialPages;
+        string[] _materialPageNames;
+        Vector2 _pageScroll;
 
         [MenuItem("Tools/Bento/工具箱")]
-        static void Open()
-        {
-            var w = GetWindow<BentoWindow>("Bento");
-            w.minSize = new Vector2(620, 520);
-        }
+        static void Open() => OpenPage(null);
 
         public static BentoWindow OpenPage(string pageName)
         {
             var window = GetWindow<BentoWindow>("Bento");
             window.minSize = new Vector2(620, 520);
-            int pageIndex = System.Array.FindIndex(MainTabNames, name =>
-                string.Equals(name, pageName, System.StringComparison.OrdinalIgnoreCase));
-            if (pageIndex >= 0)
-                window._mainTab = pageIndex;
+            window.EnsurePages();
+            int index = Array.FindIndex(window._pageNames, name =>
+                string.Equals(name, pageName, StringComparison.OrdinalIgnoreCase));
+            if (index < 0) index = window._pages.FindIndex(page =>
+                string.Equals(page.Id, pageName, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0)
+            {
+                window._mainTab = index;
+                window._groupTab = Array.IndexOf(window._groupNames, window._pages[index].Group);
+            }
             window.Show();
             window.Focus();
             window.Repaint();
             return window;
         }
 
-        public string CurrentPageName => MainTabNames[Mathf.Clamp(_mainTab, 0, MainTabNames.Length - 1)];
-
-        public object AnalyzeResourceVariantSelection(AssetNamingOptions naming = null)
+        public string CurrentPageName
         {
-            return _resourceVariantTool.AnalyzeSelectionForMcp(naming);
+            get
+            {
+                EnsurePages();
+                return _pageNames[Mathf.Clamp(_mainTab, 0, _pageNames.Length - 1)];
+            }
         }
 
-        public object AnalyzeAssetMoveSelection(
-            string prefabFolder = null,
-            string materialFolder = null,
-            string textureFolder = null,
-            AssetNamingOptions naming = null)
-        {
-            return _safeAssetMoveTool.AnalyzeSelectionForMcp(prefabFolder, materialFolder, textureFolder, naming);
-        }
-
-        void OnEnable()
-        {
-            _ctx = new SharedContext();
-            _shaderTab = new ShaderReplaceTab();
-            _scanTab = new TextureScanTab(_ctx);
-            _renameTab = new TextureRenameTab(_ctx);
-            _fillTab = new MaterialFillTab(_ctx);
-            _tagLayerTab = new TagLayerTab();
-            _autoTab = new AutoProcessTab(_ctx);
-            _repairTab = new MaterialRepairTab();
-            _prefabReplacer = new PrefabReplacer();
-            _renameTool = new HierarchyRenameTool();
-            _folderFavoritesTool = new ProjectFolderFavoritesTool();
-            _resourceVariantTool = new ResourceVariantTool();
-            _mcpIntegrationTool = new McpIntegrationTool();
-            _safeAssetMoveTool = new SafeAssetMoveTool();
-            _scanTab.OnEnable();
-        }
-
+        void OnEnable() => BuildPages();
         void OnSelectionChange() => Repaint();
 
         void OnGUI()
         {
-            _mainTab = GUILayout.Toolbar(_mainTab, MainTabNames, GUILayout.Height(26));
-            EditorGUILayout.Space(6);
-            switch (_mainTab)
+            EnsurePages();
+            bool compact = position.width < 760f;
+            if (compact)
             {
-                case 0: DrawMaterialTools(); break;
-                case 1: _prefabReplacer.Draw(); break;
-                case 2: _resourceVariantTool.Draw(); break;
-                case 3: _safeAssetMoveTool.Draw(); break;
-                case 4: _renameTool.Draw(); break;
-                case 5: _folderFavoritesTool.Draw(); break;
-                case 6: _mcpIntegrationTool.Draw(); break;
+                DrawCompactNavigation();
+                EditorGUILayout.Space(4);
+                DrawCurrentPage();
             }
+            else
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    DrawNavigation();
+                    DrawCurrentPage();
+                }
+            }
+        }
+
+        void DrawCurrentPage()
+        {
+            using (new EditorGUILayout.VerticalScope(GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true)))
+            {
+                EditorGUILayout.LabelField(CurrentPageName, EditorStyles.largeLabel);
+                EditorGUILayout.Space(4);
+                _pageScroll = EditorGUILayout.BeginScrollView(_pageScroll, GUILayout.ExpandHeight(true));
+                _pages[Mathf.Clamp(_mainTab, 0, _pages.Count - 1)].Draw();
+                EditorGUILayout.EndScrollView();
+            }
+        }
+
+        void DrawCompactNavigation()
+        {
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+            {
+                int nextGroup = EditorGUILayout.Popup(_groupTab, _groupNames, EditorStyles.toolbarPopup, GUILayout.Width(130));
+                if (nextGroup != _groupTab)
+                {
+                    _groupTab = nextGroup;
+                    _mainTab = _pages.FindIndex(page => page.Group == _groupNames[_groupTab]);
+                    _pageScroll = Vector2.zero;
+                }
+                var groupPages = _pages.Select((page, index) => new { page, index })
+                    .Where(item => item.page.Group == _groupNames[_groupTab]).ToArray();
+                int localIndex = Array.FindIndex(groupPages, item => item.index == _mainTab);
+                int nextPage = EditorGUILayout.Popup(Mathf.Max(0, localIndex), groupPages.Select(item => item.page.Name).ToArray(), EditorStyles.toolbarPopup);
+                if (nextPage >= 0 && nextPage < groupPages.Length && groupPages[nextPage].index != _mainTab)
+                {
+                    _mainTab = groupPages[nextPage].index;
+                    _pageScroll = Vector2.zero;
+                }
+            }
+        }
+
+        void BuildPages()
+        {
+            var context = new SharedContext();
+            var scanTab = new TextureScanTab(context);
+            scanTab.OnEnable();
+            _materialPages = new List<IBentoPage>
+            {
+                Page("材质", "shader_replace", "Shader 替换", new ShaderReplaceTab().Draw),
+                Page("材质", "texture_scan", "贴图扫描", scanTab.Draw),
+                Page("材质", "texture_rename", "贴图改名", new TextureRenameTab(context).Draw),
+                Page("材质", "material_fill", "填充材质球", new MaterialFillTab(context).Draw),
+                Page("材质", "tag_layer", "Tag/Layer", new TagLayerTab().Draw),
+                Page("材质", "auto_process", "一键处理", new AutoProcessTab(context).Draw),
+                Page("材质", "material_repair", "材质修复", new MaterialRepairTab().Draw)
+            };
+            _materialPageNames = _materialPages.Select(page => page.Name).ToArray();
+
+            _pages = new List<IBentoPage>
+            {
+                Page("材质", "material_tools", "材质工具", DrawMaterialTools),
+                Page("场景", "hierarchy_organization", "Hierarchy 整理", new HierarchyOrganizationTool().Draw),
+                Page("场景", "prefab_replace", "预制体替换", new PrefabReplacer().Draw),
+                Page("场景", "hierarchy_rename", "批量重命名", new HierarchyRenameTool().Draw),
+                Page("资源", "resource_variant", "资源变体", new ResourceVariantTool().Draw),
+                Page("资源", "asset_move", "资产移动", new SafeAssetMoveTool().Draw),
+                Page("资源", "ai_asset_organizer", "AI资产整理", new AIAssetOrganizerTool().Draw),
+                Page("资源", "asset_info", "资产信息", new AssetInfoExportTool().Draw),
+                Page("资源", "prefab_layer", "Prefab Layer", new PrefabLayerTool().Draw),
+                Page("资源", "folder_favorites", "文件夹收藏", new ProjectFolderFavoritesTool().Draw),
+                Page("AI与设置", "ai_mcp", "AI/MCP", new McpIntegrationTool().Draw)
+            };
+            _pageNames = _pages.Select(page => page.Name).ToArray();
+            _groupNames = _pages.Select(page => page.Group).Distinct().ToArray();
         }
 
         void DrawMaterialTools()
         {
-            _materialTab = GUILayout.Toolbar(_materialTab, MaterialTabNames);
+            _materialTab = GUILayout.Toolbar(_materialTab, _materialPageNames);
             EditorGUILayout.Space(4);
-            switch (_materialTab)
+            _materialPages[Mathf.Clamp(_materialTab, 0, _materialPages.Count - 1)].Draw();
+        }
+
+        void EnsurePages()
+        {
+            if (_pages == null || _pages.Count == 0) BuildPages();
+        }
+
+        void DrawNavigation()
+        {
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox, GUILayout.Width(150)))
             {
-                case 0: _shaderTab.Draw(); break;
-                case 1: _scanTab.Draw(); break;
-                case 2: _renameTab.Draw(); break;
-                case 3: _fillTab.Draw(); break;
-                case 4: _tagLayerTab.Draw(); break;
-                case 5: _autoTab.Draw(); break;
-                case 6: _repairTab.Draw(); break;
+                EditorGUILayout.LabelField("Bento", EditorStyles.boldLabel);
+                for (int groupIndex = 0; groupIndex < _groupNames.Length; groupIndex++)
+                {
+                    string group = _groupNames[groupIndex];
+                    bool selectedGroup = groupIndex == _groupTab;
+                    if (GUILayout.Toggle(selectedGroup, group, EditorStyles.toolbarButton))
+                    {
+                        if (!selectedGroup)
+                        {
+                            _groupTab = groupIndex;
+                            _mainTab = _pages.FindIndex(page => page.Group == group);
+                            _pageScroll = Vector2.zero;
+                        }
+                    }
+                    if (_groupTab != groupIndex) continue;
+                    foreach (int pageIndex in _pages.Select((page, index) => new { page, index }).Where(item => item.page.Group == group).Select(item => item.index))
+                        if (GUILayout.Toggle(_mainTab == pageIndex, "  " + _pages[pageIndex].Name, EditorStyles.miniButton) && _mainTab != pageIndex)
+                        {
+                            _mainTab = pageIndex;
+                            _pageScroll = Vector2.zero;
+                        }
+                    EditorGUILayout.Space(4);
+                }
             }
         }
-    }
 
+        static IBentoPage Page(string group, string id, string name, Action draw) => new BentoPage(group, id, name, draw);
+    }
 }

@@ -22,7 +22,8 @@ namespace Bento
                 VerifyPartialFailureRollsBack();
                 VerifyUnsafePlansRejected();
                 VerifyRenameAndRestore();
-                Debug.Log("[Bento Safety] PASS：移动/重命名 GUID 与引用保留、反向恢复、中途失败回滚、危险计划拒绝均通过。");
+                VerifyResourceVariantMaterialIsolation();
+                Debug.Log("[Bento Safety] PASS：移动/重命名 GUID 与引用保留、资源变体材质隔离、反向恢复、中途失败回滚、危险计划拒绝均通过。");
                 EditorUtility.DisplayDialog("Bento 安全自测", "全部测试通过。", "确定");
             }
             catch (Exception exception)
@@ -148,6 +149,47 @@ namespace Bento
 
             SafeAssetRenameService.Restore(history);
             Require(AssetDatabase.AssetPathToGUID(sourcePath) == guid, "恢复重命名后 GUID 改变");
+        }
+
+        static void VerifyResourceVariantMaterialIsolation()
+        {
+            string prefabFolder = Target + "/Prefabs";
+            string materialFolder = Target + "/Materials";
+            string textureFolder = Target + "/Textures";
+            AssetDatabase.CreateFolder(Target, "Prefabs");
+            AssetDatabase.CreateFolder(Target, "Materials");
+            AssetDatabase.CreateFolder(Target, "Textures");
+
+            var sourceMaterial = new Material(Shader.Find("Unlit/Color")) { name = "VariantSourceMaterial" };
+            AssetDatabase.CreateAsset(sourceMaterial, Source + "/VariantSourceMaterial.mat");
+            var sourceObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            sourceObject.name = "VariantSourceObject";
+            sourceObject.GetComponent<Renderer>().sharedMaterial = sourceMaterial;
+
+            try
+            {
+                var settings = new ResourceVariantPreset
+                {
+                    copyMaterials = false,
+                    copyTextures = false,
+                    replaceSceneObjects = false,
+                    prefabFolder = prefabFolder,
+                    materialFolder = materialFolder,
+                    textureFolder = textureFolder
+                };
+                var plan = new ResourceVariantPlanner(settings).Build(new List<GameObject> { sourceObject });
+                var result = new ResourceVariantGenerator(settings).Generate(plan);
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(result.createdPrefabs[0]);
+                var generatedMaterial = prefab.GetComponentInChildren<Renderer>(true).sharedMaterial;
+
+                Require(result.createdMaterials.Count == 1, "资源变体没有创建独立材质");
+                Require(generatedMaterial != sourceMaterial, "资源变体仍引用原材质");
+                Require(AssetDatabase.GetAssetPath(generatedMaterial) == result.createdMaterials[0], "Prefab 未引用生成的材质资产");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(sourceObject);
+            }
         }
 
         static Texture2D CreateTexture(string name)

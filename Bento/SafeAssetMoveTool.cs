@@ -39,48 +39,6 @@ namespace Bento
             DrawActions();
         }
 
-        public object AnalyzeSelectionForMcp(
-            string prefabFolder = null,
-            string materialFolder = null,
-            string textureFolder = null,
-            AssetNamingOptions naming = null)
-        {
-            ApplyMcpInputs(prefabFolder, materialFolder, textureFolder, naming);
-            RebuildPlan();
-            return new
-            {
-                count = _plan.Count,
-                valid_count = _plan.Count(entry => string.IsNullOrEmpty(entry.warning)),
-                entries = _plan.Select(entry => new
-                {
-                    source_path = entry.sourcePath,
-                    source_guid = entry.sourceGuid,
-                    target_path = entry.targetPath,
-                    kind = entry.kind.ToString(),
-                    is_dependency = entry.isDependency,
-                    owner_path = entry.ownerPath,
-                    warning = entry.warning,
-                    prefab_reference_count = entry.prefabReferenceCount,
-                    material_reference_count = entry.materialReferenceCount,
-                    scene_reference_count = entry.sceneReferenceCount,
-                    keeps_original_name = entry.keepOriginalNameBecauseShared,
-                    reference_samples = entry.referenceSamples.ToArray()
-                }).ToArray()
-            };
-        }
-
-        void ApplyMcpInputs(string prefabFolder, string materialFolder, string textureFolder, AssetNamingOptions naming)
-        {
-            if (BentoUtility.IsProjectFolder(prefabFolder))
-                _prefabFolder = AssetDatabase.LoadAssetAtPath<DefaultAsset>(prefabFolder);
-            if (BentoUtility.IsProjectFolder(materialFolder))
-                _materialFolder = AssetDatabase.LoadAssetAtPath<DefaultAsset>(materialFolder);
-            if (BentoUtility.IsProjectFolder(textureFolder))
-                _textureFolder = AssetDatabase.LoadAssetAtPath<DefaultAsset>(textureFolder);
-            if (naming == null) return;
-            AssetNaming.Copy(naming, _naming);
-        }
-
         void DrawFolders()
         {
             EditorGUILayout.LabelField("目标文件夹（这里只能拖 Project 文件夹）", EditorStyles.boldLabel);
@@ -123,7 +81,7 @@ namespace Bento
                 {
                     if (GUILayout.Button("使用 Project 当前选择"))
                     {
-                        foreach (var asset in Selection.objects) AddSourceAsset(asset);
+                        foreach (var asset in ProjectSelection.CurrentAssets) AddSourceAsset(asset);
                         RebuildPlan();
                     }
                     using (new EditorGUI.DisabledScope(_sourceAssets.Count == 0))
@@ -229,11 +187,18 @@ namespace Bento
             bool canMove = _plan.Any(entry => entry.include) && _plan.Where(entry => entry.include).All(entry => string.IsNullOrEmpty(entry.warning));
             using (new EditorGUI.DisabledScope(!canMove))
             {
-                if (GUILayout.Button("确认并安全移动勾选资源", GUILayout.Height(38)) && EditorUtility.DisplayDialog(
+                if (GUILayout.Button("导出移动前完整清单"))
+                {
+                    string path = AssetMoveManifestService.ExportPlan(_plan);
+                    EditorUtility.DisplayDialog("清单已导出", $"移动前预览已保存：\n{path}", "确定");
+                }
+            }
+            using (new EditorGUI.DisabledScope(!canMove))
+            {
+                if (GUILayout.Button("确认并安全移动勾选资源", GUILayout.Height(38)) && BentoCommand.Confirm(
                     "确认移动 Project 资源",
                     $"将移动 {_plan.Count(entry => entry.include)} 个资源。\n使用 AssetDatabase.MoveAsset 并验证 GUID 不变。\n\n移动后请提交对应 Git move 状态。",
-                    "开始移动",
-                    "取消"))
+                    "开始移动"))
                 {
                     ExecuteMove();
                 }
@@ -241,11 +206,11 @@ namespace Bento
 
             using (new EditorGUI.DisabledScope(_lastHistory == null || _lastHistory.moves.Count == 0))
             {
-                if (GUILayout.Button("反向恢复上次移动") && EditorUtility.DisplayDialog(
+
+                if (GUILayout.Button("反向恢复上次移动") && BentoCommand.Confirm(
                     "恢复上次移动",
                     "将按 GUID 把上次移动的资源恢复到原路径。确定继续吗？",
-                    "恢复",
-                    "取消"))
+                    "恢复"))
                 {
                     RestoreLastMove();
                 }
@@ -270,7 +235,7 @@ namespace Bento
         {
             if (_sourceAssets.Count > 0)
                 return _sourceAssets.Where(IsSupportedSourceAsset);
-            return Selection.objects.Where(IsSupportedSourceAsset);
+            return ProjectSelection.SupportedAssets(IsSupportedSourceAsset);
         }
 
         void AddSourceAsset(UnityEngine.Object asset)
@@ -327,12 +292,7 @@ namespace Bento
 
         static DefaultAsset DrawFolder(string label, DefaultAsset folder)
         {
-            var newValue = (DefaultAsset)EditorGUILayout.ObjectField(label, folder, typeof(DefaultAsset), false);
-            if (newValue == null) return null;
-            string path = AssetDatabase.GetAssetPath(newValue);
-            if (AssetDatabase.IsValidFolder(path)) return newValue;
-            EditorGUILayout.HelpBox($"{label} 只能选择文件夹，不能选择贴图、材质或 Prefab。", MessageType.Warning);
-            return folder;
+            return BentoGUI.DrawProjectFolder(label, folder, out _);
         }
 
         static string GetFolderPath(DefaultAsset folder)

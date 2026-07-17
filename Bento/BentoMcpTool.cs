@@ -36,14 +36,26 @@ namespace Bento
                         return GetProjectSelection();
                     case "analyze_asset_move":
                         return AnalyzeAssetMove(parameters);
+                    case "analyze_ai_asset_organizer":
+                        return AnalyzeAIAssetOrganizer(parameters);
+                    case "analyze_selected_asset_info":
+                        return AnalyzeSelectedAssetInfo();
+                    case "analyze_selected_prefab_layers":
+                        return AnalyzeSelectedPrefabLayers();
                     case "inspect_loaded_scenes":
                         return InspectLoadedScenes();
+                    case "get_loaded_scene_hierarchy":
+                        return GetLoadedSceneHierarchy();
+                    case "analyze_hierarchy_organization":
+                        return AnalyzeHierarchyOrganization();
+                    case "prepare_hierarchy_organization_draft":
+                        return PrepareHierarchyOrganizationDraft(parameters);
                     case "validate_loaded_scenes":
                         return ValidateLoadedScenes();
                     case "ping":
                         return new SuccessResponse("pong", new { tool = "bento" });
                     default:
-                        return new ErrorResponse($"Unknown action: {action}. Supported: ping, get_selection, get_project_selection, open_toolbox, analyze_resource_variant, analyze_asset_move, inspect_loaded_scenes, validate_loaded_scenes");
+                        return new ErrorResponse($"Unknown action: {action}. Supported: ping, get_selection, get_project_selection, open_toolbox, analyze_resource_variant, analyze_asset_move, analyze_ai_asset_organizer, analyze_selected_asset_info, analyze_selected_prefab_layers, inspect_loaded_scenes, get_loaded_scene_hierarchy, analyze_hierarchy_organization, prepare_hierarchy_organization_draft, validate_loaded_scenes");
                 }
             }
             catch (Exception exception)
@@ -80,10 +92,8 @@ namespace Bento
 
         static object AnalyzeResourceVariant(JObject parameters)
         {
-            var window = BentoWindow.OpenPage("资源变体");
             var naming = ReadNamingOptions(parameters);
-            var summary = window.AnalyzeResourceVariantSelection(naming);
-            return new SuccessResponse("Resource variant dry-run completed.", summary);
+            return new SuccessResponse("Resource variant dry-run completed.", McpAnalysisFacade.AnalyzeResourceVariant(naming));
         }
 
         static object GetProjectSelection()
@@ -104,15 +114,43 @@ namespace Bento
 
         static object AnalyzeAssetMove(JObject parameters)
         {
-            var window = BentoWindow.OpenPage("资产移动");
             var naming = ReadNamingOptions(parameters);
             return new SuccessResponse(
                 "Asset move plan analyzed. Execution still requires Unity UI confirmation.",
-                window.AnalyzeAssetMoveSelection(
+                McpAnalysisFacade.AnalyzeAssetMove(
                     parameters?["prefab_folder"]?.ToString(),
                     parameters?["material_folder"]?.ToString(),
                     parameters?["texture_folder"]?.ToString(),
                     naming));
+        }
+
+        static object AnalyzeAIAssetOrganizer(JObject parameters)
+        {
+            return new SuccessResponse(
+                "AI asset organizer plan analyzed. Execution requires explicit confirmation in the Unity UI.",
+                McpAnalysisFacade.AnalyzeAssetOrganizer(new AIAssetOrganizerConfig
+                {
+                    sourceRoot = parameters?["source_root"]?.ToString(),
+                    prefabFolder = parameters?["prefab_folder"]?.ToString(),
+                    materialFolder = parameters?["material_folder"]?.ToString(),
+                    textureFolder = parameters?["texture_folder"]?.ToString(),
+                    otherFolder = parameters?["other_folder"]?.ToString(),
+                    includeDependencies = parameters?["include_dependencies"]?.Value<bool?>() ?? true
+                }));
+        }
+
+        static object AnalyzeSelectedAssetInfo()
+        {
+            return new SuccessResponse(
+                "Selected Project assets analyzed without modification.",
+                McpAnalysisFacade.AnalyzeSelectedAssetInfo());
+        }
+
+        static object AnalyzeSelectedPrefabLayers()
+        {
+            return new SuccessResponse(
+                "Selected prefab layers analyzed. Applying changes requires explicit confirmation in the Unity UI.",
+                McpAnalysisFacade.AnalyzeSelectedPrefabLayers());
         }
 
         static object InspectLoadedScenes()
@@ -131,6 +169,69 @@ namespace Bento
                 })
                 .ToArray();
             return new SuccessResponse("Loaded scenes inspected without modification.", new { count = scenes.Length, scenes });
+        }
+
+        static object GetLoadedSceneHierarchy()
+        {
+            var snapshot = SceneHierarchySnapshotService.CaptureLoadedScenes();
+            return new SuccessResponse("Loaded scene Hierarchy read without modification.", snapshot);
+        }
+
+        static object AnalyzeHierarchyOrganization()
+        {
+            var snapshot = SceneHierarchySnapshotService.CaptureLoadedScenes();
+            return new SuccessResponse("Hierarchy organization candidates analyzed without modification.", new
+            {
+                scenes = snapshot.scenes.Select(scene => new
+                {
+                    scene.name,
+                    scene.path,
+                    root_candidates = scene.nodes.Where(node => node.depth == 0).Select(node => new
+                    {
+                        instance_id = node.instanceId,
+                        node.name,
+                        node.hierarchyPath,
+                        node.prefabAssetPath,
+                        node.layer,
+                        node.childCount
+                    }).ToArray(),
+                    parent_candidates = scene.nodes.Where(node => node.childCount > 0 && node.depth <= 4).Select(node => new
+                    {
+                        instance_id = node.instanceId,
+                        node.hierarchyPath,
+                        node.depth,
+                        node.childCount
+                    }).ToArray()
+                }).ToArray()
+            });
+        }
+
+        static object PrepareHierarchyOrganizationDraft(JObject parameters)
+        {
+            var items = parameters?["entries"] as JArray;
+            if (items == null || items.Count == 0) return new ErrorResponse("entries is required");
+            var entries = items.Select(item => HierarchyOrganizationService.Validate(new HierarchyOrganizationEntry
+            {
+                objectInstanceId = item?["object_instance_id"]?.Value<int>() ?? 0,
+                parentInstanceId = item?["parent_instance_id"]?.Value<int>() ?? 0,
+                include = item?["include"]?.Value<bool?>() ?? true
+            })).ToList();
+            HierarchyOrganizationSession.SetDraft(entries);
+            var window = BentoWindow.OpenPage("hierarchy_organization");
+            return new SuccessResponse("Hierarchy draft prepared for human review. No scene changes were made.", new
+            {
+                page = window.CurrentPageName,
+                count = entries.Count,
+                valid_count = entries.Count(entry => string.IsNullOrEmpty(entry.warning)),
+                entries = entries.Select(entry => new
+                {
+                    object_instance_id = entry.objectInstanceId,
+                    entry.objectPath,
+                    parent_instance_id = entry.parentInstanceId,
+                    entry.targetParentPath,
+                    entry.warning
+                }).ToArray()
+            });
         }
 
         static object ValidateLoadedScenes()

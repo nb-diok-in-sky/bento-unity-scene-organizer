@@ -6,6 +6,25 @@ namespace Bento
 {
     static class ResourceVariantTextureClassifier
     {
+        public static VariantTextureDisposition GetDisposition(
+            Shader shader,
+            string propertyName,
+            string propertyDescription,
+            Texture texture)
+        {
+            if (texture == null || string.IsNullOrEmpty(AssetDatabase.GetAssetPath(texture)))
+                return VariantTextureDisposition.RuntimeInternal;
+
+            string semantic = $"{propertyName} {propertyDescription}";
+            if (ContainsAny(semantic,
+                return VariantTextureDisposition.SharedShaderSupport;
+
+            if (false && ContainsAny(semantic,
+                return VariantTextureDisposition.SharedShaderSupport;
+
+            return VariantTextureDisposition.CopyCandidate;
+        }
+
         public static VariantTextureKind Classify(
             Shader shader,
             int propertyIndex,
@@ -61,5 +80,6 @@ namespace Bento
             }
             return false;
         }
+
     }
 }
