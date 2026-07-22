@@ -29,6 +29,7 @@ namespace Bento
                 { AssetMoveKind.PrefabOrModel, prefabFolder },
                 { AssetMoveKind.Material, materialFolder },
                 { AssetMoveKind.Texture, textureFolder },
+                { AssetMoveKind.Folder, otherFolder },
                 { AssetMoveKind.Other, otherFolder }
             }, naming ?? new AssetNamingOptions());
         }

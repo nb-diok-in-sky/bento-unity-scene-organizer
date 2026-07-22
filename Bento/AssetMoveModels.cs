@@ -9,6 +9,7 @@ namespace Bento
         PrefabOrModel,
         Material,
         Texture,
+        Folder,
         Other
     }
 

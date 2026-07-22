@@ -29,3 +29,8 @@ Thumbs.db
 _backup_*/
 Bento工具备份/
 
+
+# Optional official Unity FBX packages installed locally.
+# Keep third-party binaries and licenses separate from Bento source control.
+LocalPackages/com.unity.formats.fbx/
+LocalPackages/com.autodesk.fbx/

@@ -42,6 +42,8 @@ namespace Bento
                         return AnalyzeSelectedAssetInfo();
                     case "analyze_selected_prefab_layers":
                         return AnalyzeSelectedPrefabLayers();
+                    case "analyze_project_asset_rename":
+                        return new SuccessResponse("Project asset rename plan analyzed without modification.", McpAnalysisFacade.AnalyzeProjectAssetRename(ReadNamingOptions(parameters)));
                     case "inspect_loaded_scenes":
                         return InspectLoadedScenes();
                     case "get_loaded_scene_hierarchy":
@@ -55,7 +57,6 @@ namespace Bento
                     case "ping":
                         return new SuccessResponse("pong", new { tool = "bento" });
                     default:
-                        return new ErrorResponse($"Unknown action: {action}. Supported: ping, get_selection, get_project_selection, open_toolbox, analyze_resource_variant, analyze_asset_move, analyze_ai_asset_organizer, analyze_selected_asset_info, analyze_selected_prefab_layers, inspect_loaded_scenes, get_loaded_scene_hierarchy, analyze_hierarchy_organization, prepare_hierarchy_organization_draft, validate_loaded_scenes");
                 }
             }
             catch (Exception exception)

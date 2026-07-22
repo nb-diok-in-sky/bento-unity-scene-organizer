@@ -45,8 +45,6 @@ namespace Bento
                 AddAssetAndDependencies(asset, AssetDatabase.GetAssetPath(asset), false, string.Empty, entries, seenPaths);
 
             ApplyTargets(entries, targetFolders, naming);
-            AssetReferenceAuditService.Audit(entries);
-            ApplyTargets(entries, targetFolders, naming);
             foreach (var entry in entries)
             {
                 entry.warning = _policy.ValidateEntry(entry);
@@ -55,7 +53,7 @@ namespace Bento
             return entries;
         }
 
-        static void ApplyTargets(
+        public static void ApplyTargets(
             IReadOnlyList<AssetMoveEntry> entries,
             IReadOnlyDictionary<AssetMoveKind, string> targetFolders,
             AssetNamingOptions naming)
@@ -66,8 +64,10 @@ namespace Bento
                 entry.targetFolder = targetFolders.TryGetValue(entry.kind, out string folder) ? folder : string.Empty;
                 string extension = Path.GetExtension(entry.sourcePath);
                 string originalName = Path.GetFileNameWithoutExtension(entry.sourcePath);
-                string targetName = entry.keepOriginalNameBecauseShared ? originalName : AssetNaming.BuildName(originalName, index, naming);
-                entry.targetPath = string.IsNullOrEmpty(folder) ? string.Empty : $"{folder.TrimEnd('/')}/{targetName}{extension}";
+                string targetName = AssetNaming.BuildName(originalName, index, naming);
+                entry.targetPath = string.IsNullOrEmpty(folder) ? string.Empty : entry.kind == AssetMoveKind.Folder
+                    ? $"{folder.TrimEnd('/')}/{targetName}"
+                    : $"{folder.TrimEnd('/')}/{targetName}{extension}";
             }
         }
 
@@ -109,6 +109,7 @@ namespace Bento
 
         static AssetMoveKind Classify(UnityEngine.Object asset, string path)
         {
+            if (AssetDatabase.IsValidFolder(path)) return AssetMoveKind.Folder;
             if (asset is Material) return AssetMoveKind.Material;
             if (asset is Texture) return AssetMoveKind.Texture;
             if (asset is GameObject && new[] { ".prefab", ".fbx", ".obj" }.Any(extension => path.EndsWith(extension, StringComparison.OrdinalIgnoreCase)))
@@ -125,10 +126,12 @@ namespace Bento
         {
             if (string.IsNullOrEmpty(entry.sourceGuid)) return "资源没有有效 GUID";
             if (!entry.sourcePath.StartsWith("Assets/", StringComparison.Ordinal)) return "只允许移动 Assets/ 下资源";
-            if (AssetDatabase.IsValidFolder(entry.sourcePath)) return "禁止通过该工具移动整个文件夹";
+            if (string.Equals(entry.sourcePath, "Assets", StringComparison.OrdinalIgnoreCase)) return "禁止移动 Assets 根目录";
             var mainAsset = AssetDatabase.LoadMainAssetAtPath(entry.sourcePath);
             if (entry.asset != null && mainAsset != null && entry.asset != mainAsset) return "FBX/模型内嵌子资源不能单独移动，请移动模型主资产";
             if (!BentoUtility.IsProjectFolder(entry.targetFolder)) return "目标文件夹无效";
+            if (entry.kind == AssetMoveKind.Folder && entry.targetFolder.StartsWith(entry.sourcePath.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase))
+                return "禁止把文件夹移动到自己的子目录";
             if (string.Equals(entry.sourcePath, entry.targetPath, StringComparison.OrdinalIgnoreCase)) return "源路径和目标路径相同";
             if (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(entry.targetPath))) return "目标路径已存在资源";
             AddressablePathStatus addressable = GetAddressablePathStatus(entry.sourceGuid, entry.sourcePath);
@@ -224,6 +227,7 @@ namespace Bento
         static void Verify(string guid, string path)
         {
             if (!string.Equals(AssetDatabase.AssetPathToGUID(path), guid, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException($"GUID 验证失败：{path}");
+            if (AssetDatabase.IsValidFolder(path)) return;
             if (AssetDatabase.LoadMainAssetAtPath(path) == null) throw new InvalidOperationException($"移动后资源无法加载：{path}");
         }
 

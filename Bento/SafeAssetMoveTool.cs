@@ -15,6 +15,7 @@ namespace Bento
         DefaultAsset _prefabFolder;
         DefaultAsset _materialFolder;
         DefaultAsset _textureFolder;
+        DefaultAsset _otherFolder;
         Vector2 _scrollPosition;
         AssetMoveHistory _lastHistory;
 
@@ -28,7 +29,7 @@ namespace Bento
 
             EditorGUILayout.LabelField("安全移动 Project 资产", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "使用 AssetDatabase.MoveAsset 移动资源并验证 GUID 不变。Prefab/FBX 会列出直接引用的材质和贴图，可逐项取消。",
+                "等价于在 Unity Project 窗口手动拖动：支持任意 Project 资产和整个文件夹。模型会自动带出直接使用的材质、贴图；其他内容原样移动，不扫描整个项目。",
                 MessageType.Info);
 
             DrawSourceAssets();
@@ -48,7 +49,8 @@ namespace Bento
                 _prefabFolder = DrawFolder("Prefab / FBX", _prefabFolder);
                 _materialFolder = DrawFolder("Material", _materialFolder);
                 _textureFolder = DrawFolder("Texture", _textureFolder);
-                if (EditorGUI.EndChangeCheck() && _plan.Count > 0) RebuildPlan();
+                _otherFolder = DrawFolder("其他资产 / 文件夹", _otherFolder);
+                if (EditorGUI.EndChangeCheck() && _plan.Count > 0) RefreshTargets();
             }
         }
 
@@ -58,7 +60,7 @@ namespace Bento
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
                 EditorGUILayout.HelpBox(
-                    "拖入 Project 中的 Prefab、FBX、Material 或 Texture。拖入 Prefab/FBX 后会自动加入它引用的材质和贴图。",
+                    "拖入任意 Project 资产或整个文件夹。Prefab/FBX/OBJ 会自动加入直接引用的材质和贴图；其他内容按原样移动。",
                     MessageType.None);
 
                 using (new EditorGUILayout.HorizontalScope())
@@ -138,7 +140,7 @@ namespace Bento
             {
                 EditorGUI.BeginChangeCheck();
                 AssetNaming.DrawFields(_naming, "统一基础名称（留空保留原名）");
-                if (EditorGUI.EndChangeCheck() && _plan.Count > 0) RebuildPlan();
+                if (EditorGUI.EndChangeCheck() && _plan.Count > 0) RefreshTargets();
             }
         }
 
@@ -165,16 +167,6 @@ namespace Bento
                     entry.include = EditorGUILayout.ToggleLeft($"{entry.kind}: {entry.sourcePath}", entry.include);
                     EditorGUILayout.LabelField($"→ {entry.targetPath}", EditorStyles.miniLabel);
                     if (entry.isDependency) EditorGUILayout.LabelField($"引用来源：{entry.ownerPath}", EditorStyles.miniLabel);
-                    if (entry.kind == AssetMoveKind.Material || entry.kind == AssetMoveKind.Texture)
-                    {
-                        EditorGUILayout.LabelField(
-                            $"反向引用：Prefab {entry.prefabReferenceCount} / Material {entry.materialReferenceCount} / Scene {entry.sceneReferenceCount}",
-                            EditorStyles.miniLabel);
-                        if (entry.keepOriginalNameBecauseShared)
-                            EditorGUILayout.HelpBox("检测到共享引用：移动时保留原文件名，不应用统一重命名。", MessageType.Info);
-                        foreach (string sample in entry.referenceSamples.Take(4))
-                            EditorGUILayout.LabelField($"　↳ {sample}", EditorStyles.miniLabel);
-                    }
                     if (!string.IsNullOrEmpty(entry.warning)) EditorGUILayout.HelpBox(entry.warning, MessageType.Warning);
                     if (GUILayout.Button("定位源资源", GUILayout.Width(90))) Ping(entry.sourcePath);
                 }
@@ -223,12 +215,27 @@ namespace Bento
             string prefabFolder = GetFolderPath(_prefabFolder);
             string materialFolder = GetFolderPath(_materialFolder);
             string textureFolder = GetFolderPath(_textureFolder);
+            string otherFolder = GetFolderPath(_otherFolder);
             _plan.AddRange(SafeAssetMoveService.BuildPlan(
                 GetPlanSources(),
                 prefabFolder,
                 materialFolder,
                 textureFolder,
+                otherFolder,
                 _naming));
+        }
+
+        void RefreshTargets()
+        {
+            var targetFolders = new Dictionary<AssetMoveKind, string>
+            {
+                [AssetMoveKind.PrefabOrModel] = GetFolderPath(_prefabFolder),
+                [AssetMoveKind.Material] = GetFolderPath(_materialFolder),
+                [AssetMoveKind.Texture] = GetFolderPath(_textureFolder),
+                [AssetMoveKind.Folder] = GetFolderPath(_otherFolder),
+                [AssetMoveKind.Other] = GetFolderPath(_otherFolder)
+            };
+            AssetMovePlanner.ApplyTargets(_plan, targetFolders, _naming);
         }
 
         IEnumerable<UnityEngine.Object> GetPlanSources()
@@ -248,9 +255,9 @@ namespace Bento
         {
             if (asset == null) return false;
             string path = AssetDatabase.GetAssetPath(asset);
-            if (string.IsNullOrEmpty(path) || AssetDatabase.IsValidFolder(path) || !path.StartsWith("Assets/", StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(path) || !path.StartsWith("Assets/", StringComparison.Ordinal))
                 return false;
-            return asset is GameObject || asset is Material || asset is Texture;
+            return true;
         }
 
         void ExecuteMove()

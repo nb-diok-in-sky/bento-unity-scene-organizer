@@ -23,6 +23,9 @@ namespace Bento
 
         public static BentoWindow OpenPage(string pageName)
         {
+            if (string.Equals(pageName, "hierarchy_rename", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pageName, "project_asset_rename", StringComparison.OrdinalIgnoreCase))
+                pageName = "batch_rename";
             var window = GetWindow<BentoWindow>("Bento");
             window.minSize = new Vector2(620, 520);
             window.EnsurePages();
@@ -130,9 +133,9 @@ namespace Bento
                 Page("材质", "material_tools", "材质工具", DrawMaterialTools),
                 Page("场景", "hierarchy_organization", "Hierarchy 整理", new HierarchyOrganizationTool().Draw),
                 Page("场景", "prefab_replace", "预制体替换", new PrefabReplacer().Draw),
-                Page("场景", "hierarchy_rename", "批量重命名", new HierarchyRenameTool().Draw),
                 Page("资源", "resource_variant", "资源变体", new ResourceVariantTool().Draw),
                 Page("资源", "asset_move", "资产移动", new SafeAssetMoveTool().Draw),
+                Page("资源", "batch_rename", "批量重命名", new BatchRenameTool().Draw),
                 Page("资源", "ai_asset_organizer", "AI资产整理", new AIAssetOrganizerTool().Draw),
                 Page("资源", "asset_info", "资产信息", new AssetInfoExportTool().Draw),
                 Page("资源", "prefab_layer", "Prefab Layer", new PrefabLayerTool().Draw),

@@ -121,12 +121,31 @@ namespace Bento
             };
         }
 
+
+        public static object AnalyzeProjectAssetRename(AssetNamingOptions naming)
+        {
+            var assets = Selection.objects.Where(asset => asset != null)
+                .Select(asset => new { asset, path = AssetDatabase.GetAssetPath(asset) })
+                .Where(item => !string.IsNullOrEmpty(item.path) && item.path.StartsWith("Assets/", StringComparison.Ordinal) && !AssetDatabase.IsValidFolder(item.path))
+                .OrderBy(item => item.path, StringComparer.OrdinalIgnoreCase).ToArray();
+            var entries = assets.Select((item, index) =>
+            {
+                string original = System.IO.Path.GetFileNameWithoutExtension(item.path);
+                string next = AssetNaming.BuildName(original, index, naming ?? new AssetNamingOptions());
+                return SafeAssetRenameService.BuildEntry(item.path, next);
+            }).ToArray();
+            return new
+            {
+                count = entries.Length,
+                entries = entries.Select(entry => new { source_path = entry.sourcePath, target_path = entry.targetPath, guid = entry.sourceGuid, entry.warning }).ToArray()
+            };
+        }
+
         static bool IsSupportedMoveSource(UnityEngine.Object asset)
         {
             if (asset == null) return false;
             string path = AssetDatabase.GetAssetPath(asset);
-            return !string.IsNullOrEmpty(path) && !AssetDatabase.IsValidFolder(path) &&
-                   (asset is GameObject || asset is Material || asset is Texture);
+            return !string.IsNullOrEmpty(path) && path.StartsWith("Assets/", StringComparison.Ordinal);
         }
     }
 }
