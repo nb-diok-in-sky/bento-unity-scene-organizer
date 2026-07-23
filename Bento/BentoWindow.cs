@@ -16,6 +16,8 @@ namespace Bento
         string[] _groupNames;
         List<IBentoPage> _materialPages;
         string[] _materialPageNames;
+        TextureScanTab _textureScanTab;
+        bool _materialToolsInitialized;
         Vector2 _pageScroll;
 
         [MenuItem("Tools/Bento/工具箱")]
@@ -115,9 +117,11 @@ namespace Bento
         {
             var context = new SharedContext();
             var scanTab = new TextureScanTab(context);
-            scanTab.OnEnable();
+            _textureScanTab = scanTab;
+            _materialToolsInitialized = false;
             _materialPages = new List<IBentoPage>
             {
+                Page("材质", "scene_material_replace", "场景材质替换", new SceneMaterialReplacementTool().Draw),
                 Page("材质", "shader_replace", "Shader 替换", new ShaderReplaceTab().Draw),
                 Page("材质", "texture_scan", "贴图扫描", scanTab.Draw),
                 Page("材质", "texture_rename", "贴图改名", new TextureRenameTab(context).Draw),
@@ -133,8 +137,12 @@ namespace Bento
                 Page("材质", "material_tools", "材质工具", DrawMaterialTools),
                 Page("场景", "hierarchy_organization", "Hierarchy 整理", new HierarchyOrganizationTool().Draw),
                 Page("场景", "prefab_replace", "预制体替换", new PrefabReplacer().Draw),
+                Page("场景", "scene_light_batch", "场景光源批处理", new SceneLightBatchTool().Draw),
+                Page("场景", "scene_renderer_shadow", "场景物体阴影", new SceneRendererShadowBatchTool().Draw),
                 Page("资源", "resource_variant", "资源变体", new ResourceVariantTool().Draw),
                 Page("资源", "asset_move", "资产移动", new SafeAssetMoveTool().Draw),
+                Page("资源", "asset_operation_history", "操作历史", new AssetOperationHistoryTool().Draw),
+                Page("资源", "obj_to_fbx", "OBJ 转项目 FBX", new ObjToFbxConversionTool().Draw),
                 Page("资源", "batch_rename", "批量重命名", new BatchRenameTool().Draw),
                 Page("资源", "ai_asset_organizer", "AI资产整理", new AIAssetOrganizerTool().Draw),
                 Page("资源", "asset_info", "资产信息", new AssetInfoExportTool().Draw),
@@ -148,6 +156,11 @@ namespace Bento
 
         void DrawMaterialTools()
         {
+            if (!_materialToolsInitialized)
+            {
+                _textureScanTab?.OnEnable();
+                _materialToolsInitialized = true;
+            }
             _materialTab = GUILayout.Toolbar(_materialTab, _materialPageNames);
             EditorGUILayout.Space(4);
             _materialPages[Mathf.Clamp(_materialTab, 0, _materialPages.Count - 1)].Draw();

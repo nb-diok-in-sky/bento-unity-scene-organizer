@@ -43,6 +43,8 @@ namespace Bento
             }
 
             EditorGUILayout.Space(6);
+            if (GUILayout.Button("刷新 Unity 资产并输出日志", GUILayout.Height(28)))
+                BentoRefreshCommand.RefreshWithFeedback();
             if (GUILayout.Button("导出当前场景完整 Hierarchy JSON", GUILayout.Height(30)))
             {
                 string path = SceneHierarchySnapshotService.ExportLoadedScenes();

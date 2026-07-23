@@ -29,7 +29,7 @@ namespace Bento
 
             EditorGUILayout.LabelField("安全移动 Project 资产", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "等价于在 Unity Project 窗口手动拖动：支持任意 Project 资产和整个文件夹。模型会自动带出直接使用的材质、贴图；其他内容原样移动，不扫描整个项目。",
+                "等价于在 Unity Project 窗口手动拖动：只移动你明确选中的 Project 资产或文件夹，不会自动移动材质、贴图或其他依赖。引用通过 GUID 保持。",
                 MessageType.Info);
 
             DrawSourceAssets();
@@ -60,7 +60,7 @@ namespace Bento
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
                 EditorGUILayout.HelpBox(
-                    "拖入任意 Project 资产或整个文件夹。Prefab/FBX/OBJ 会自动加入直接引用的材质和贴图；其他内容按原样移动。",
+                    "拖入任意 Project 资产或整个文件夹。选择 7 项就只生成 7 项计划，不会自动展开模型依赖。",
                     MessageType.None);
 
                 using (new EditorGUILayout.HorizontalScope())
@@ -139,7 +139,13 @@ namespace Bento
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
                 EditorGUI.BeginChangeCheck();
-                AssetNaming.DrawFields(_naming, "统一基础名称（留空保留原名）");
+                _naming.prefix = EditorGUILayout.TextField("前缀", _naming.prefix);
+                _naming.baseName = EditorGUILayout.TextField("统一基础名称（留空保留原名）", _naming.baseName);
+                _naming.suffix = EditorGUILayout.TextField("后缀", _naming.suffix);
+                _naming.appendNumber = EditorGUILayout.Toggle("自动编号", _naming.appendNumber);
+                EditorGUILayout.HelpBox(
+                    "自动编号无需设置起始号：工具会检查目标文件夹和本批次计划，从 01 开始选择下一个未被占用的编号。已有 01、02 时会自动从 03 继续。未开启编号时，同文件夹内统一命名产生重名会阻止执行。",
+                    MessageType.None);
                 if (EditorGUI.EndChangeCheck() && _plan.Count > 0) RefreshTargets();
             }
         }
@@ -148,7 +154,7 @@ namespace Bento
         {
             using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.LabelField($"移动计划：{_plan.Count} 项", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField($"移动计划：{_plan.Count} 项（仅选中资产）", EditorStyles.boldLabel);
                 if (GUILayout.Button("扫描 Project 选择", GUILayout.Width(130))) RebuildPlan();
             }
         }
@@ -166,7 +172,6 @@ namespace Bento
                 {
                     entry.include = EditorGUILayout.ToggleLeft($"{entry.kind}: {entry.sourcePath}", entry.include);
                     EditorGUILayout.LabelField($"→ {entry.targetPath}", EditorStyles.miniLabel);
-                    if (entry.isDependency) EditorGUILayout.LabelField($"引用来源：{entry.ownerPath}", EditorStyles.miniLabel);
                     if (!string.IsNullOrEmpty(entry.warning)) EditorGUILayout.HelpBox(entry.warning, MessageType.Warning);
                     if (GUILayout.Button("定位源资源", GUILayout.Width(90))) Ping(entry.sourcePath);
                 }
@@ -211,18 +216,27 @@ namespace Bento
 
         void RebuildPlan()
         {
-            _plan.Clear();
-            string prefabFolder = GetFolderPath(_prefabFolder);
-            string materialFolder = GetFolderPath(_materialFolder);
-            string textureFolder = GetFolderPath(_textureFolder);
-            string otherFolder = GetFolderPath(_otherFolder);
-            _plan.AddRange(SafeAssetMoveService.BuildPlan(
-                GetPlanSources(),
-                prefabFolder,
-                materialFolder,
-                textureFolder,
-                otherFolder,
-                _naming));
+            try
+            {
+                _plan.Clear();
+                string prefabFolder = GetFolderPath(_prefabFolder);
+                string materialFolder = GetFolderPath(_materialFolder);
+                string textureFolder = GetFolderPath(_textureFolder);
+                string otherFolder = GetFolderPath(_otherFolder);
+                _plan.AddRange(SafeAssetMoveService.BuildPlan(
+                    GetPlanSources(),
+                    prefabFolder,
+                    materialFolder,
+                    textureFolder,
+                    otherFolder,
+                    _naming));
+            }
+            catch (Exception exception)
+            {
+                _plan.Clear();
+                Debug.LogException(exception);
+                EditorUtility.DisplayDialog("生成移动计划失败", exception.Message, "确定");
+            }
         }
 
         void RefreshTargets()
@@ -266,7 +280,11 @@ namespace Bento
             {
                 _lastHistory = new AssetMoveHistory();
                 SafeAssetMoveService.Execute(_plan, _lastHistory);
-                EditorUtility.DisplayDialog("移动完成", $"已安全移动 {_lastHistory.moves.Count} 个资源，GUID 验证通过。", "确定");
+                string historyWarning = RecordHistory(_lastHistory);
+                EditorUtility.DisplayDialog(
+                    "移动完成",
+                    $"已安全移动 {_lastHistory.moves.Count} 个资源，GUID 验证通过。" + historyWarning,
+                    "确定");
                 _plan.Clear();
             }
             catch (Exception exception)
@@ -279,6 +297,20 @@ namespace Bento
                         ? "\n\n本批次已由移动服务自动回滚到原路径。"
                         : "\n\n自动回滚未完成，历史已保留。请使用“反向恢复上次移动”或立即联系程序处理。"),
                     "确定");
+            }
+        }
+
+        static string RecordHistory(AssetMoveHistory history)
+        {
+            try
+            {
+                AssetOperationHistory.Record(AssetMoveOperationHandler.CreateRecord(history));
+                return "\n操作历史已保存，可在“资源 → 操作历史”恢复。";
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError("[Bento] 资产已移动成功，但持久历史保存失败：\n" + exception);
+                return "\n\n警告：持久历史保存失败，请不要关闭工具箱；当前窗口内仍可使用“反向恢复上次移动”。";
             }
         }
 

@@ -3,7 +3,8 @@
   "rootNamespace": "Bento",
   "references": [
     "MCPForUnity.Editor",
-    "MCPForUnity.Runtime"
+    "MCPForUnity.Runtime",
+    "Unity.Formats.Fbx.Editor"
   ],
   "includePlatforms": [
     "Editor"
@@ -16,7 +17,13 @@
   ],
   "autoReferenced": true,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.unity.formats.fbx",
+      "expression": "5.1.0",
+      "define": "BENTO_HAS_FBX_EXPORTER"
+    }
+  ],
   "noEngineReferences": false
 }
 

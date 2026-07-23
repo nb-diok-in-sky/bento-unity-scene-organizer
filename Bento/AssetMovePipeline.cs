@@ -42,7 +42,7 @@ namespace Bento
             var entries = new List<AssetMoveEntry>();
             var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var asset in assets.Where(asset => asset != null))
-                AddAssetAndDependencies(asset, AssetDatabase.GetAssetPath(asset), false, string.Empty, entries, seenPaths);
+                AddSelectedAsset(asset, AssetDatabase.GetAssetPath(asset), entries, seenPaths);
 
             ApplyTargets(entries, targetFolders, naming);
             foreach (var entry in entries)
@@ -58,24 +58,60 @@ namespace Bento
             IReadOnlyDictionary<AssetMoveKind, string> targetFolders,
             AssetNamingOptions naming)
         {
+            var reservedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (int index = 0; index < entries.Count; index++)
             {
                 var entry = entries[index];
                 entry.targetFolder = targetFolders.TryGetValue(entry.kind, out string folder) ? folder : string.Empty;
                 string extension = Path.GetExtension(entry.sourcePath);
                 string originalName = Path.GetFileNameWithoutExtension(entry.sourcePath);
-                string targetName = AssetNaming.BuildName(originalName, index, naming);
-                entry.targetPath = string.IsNullOrEmpty(folder) ? string.Empty : entry.kind == AssetMoveKind.Folder
-                    ? $"{folder.TrimEnd('/')}/{targetName}"
-                    : $"{folder.TrimEnd('/')}/{targetName}{extension}";
+                string targetName = AssetNaming.BuildName(originalName, 0, WithoutNumber(naming));
+                entry.targetPath = BuildTargetPath(entry, folder, targetName, extension);
+                if (naming?.appendNumber == true)
+                    entry.targetPath = FindAvailableNumberedPath(entry, folder, targetName, extension, reservedTargets);
+                reservedTargets.Add(entry.targetPath);
             }
         }
 
-        static void AddAssetAndDependencies(
+        static AssetNamingOptions WithoutNumber(AssetNamingOptions source)
+        {
+            return new AssetNamingOptions
+            {
+                prefix = source?.prefix ?? string.Empty,
+                baseName = source?.baseName ?? string.Empty,
+                suffix = source?.suffix ?? string.Empty,
+                appendNumber = false
+            };
+        }
+
+        static string FindAvailableNumberedPath(
+            AssetMoveEntry entry,
+            string folder,
+            string baseName,
+            string extension,
+            ISet<string> reservedTargets)
+        {
+            if (string.IsNullOrEmpty(folder)) return string.Empty;
+            for (int number = 1; number < 1000000; number++)
+            {
+                string candidate = BuildTargetPath(entry, folder, baseName + number.ToString("D2"), extension);
+                if (!reservedTargets.Contains(candidate) && string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(candidate)))
+                    return candidate;
+            }
+            throw new InvalidOperationException($"无法为资源生成可用编号：{entry.sourcePath}");
+        }
+
+        static string BuildTargetPath(AssetMoveEntry entry, string folder, string targetName, string extension)
+        {
+            if (string.IsNullOrEmpty(folder)) return string.Empty;
+            return entry.kind == AssetMoveKind.Folder
+                ? $"{folder.TrimEnd('/')}/{targetName}"
+                : $"{folder.TrimEnd('/')}/{targetName}{extension}";
+        }
+
+        static void AddSelectedAsset(
             UnityEngine.Object asset,
             string path,
-            bool dependency,
-            string ownerPath,
             ICollection<AssetMoveEntry> entries,
             ISet<string> seenPaths)
         {
@@ -87,24 +123,9 @@ namespace Bento
                 sourcePath = path,
                 sourceGuid = AssetDatabase.AssetPathToGUID(path),
                 kind = kind,
-                isDependency = dependency,
-                ownerPath = ownerPath
+                isDependency = false,
+                ownerPath = string.Empty
             });
-
-            if (kind == AssetMoveKind.PrefabOrModel && asset is GameObject gameObject)
-            {
-                foreach (var material in gameObject.GetComponentsInChildren<Renderer>(true).SelectMany(renderer => renderer.sharedMaterials).Where(material => material != null))
-                    AddAssetAndDependencies(material, AssetDatabase.GetAssetPath(material), true, path, entries, seenPaths);
-            }
-            else if (kind == AssetMoveKind.Material && asset is Material material && material.shader != null)
-            {
-                for (int index = 0; index < ShaderUtil.GetPropertyCount(material.shader); index++)
-                {
-                    if (ShaderUtil.GetPropertyType(material.shader, index) != ShaderUtil.ShaderPropertyType.TexEnv) continue;
-                    var texture = material.GetTexture(ShaderUtil.GetPropertyName(material.shader, index));
-                    if (texture != null) AddAssetAndDependencies(texture, AssetDatabase.GetAssetPath(texture), true, path, entries, seenPaths);
-                }
-            }
         }
 
         static AssetMoveKind Classify(UnityEngine.Object asset, string path)
@@ -121,7 +142,6 @@ namespace Bento
     sealed class AssetMoveSafetyPolicy : IAssetMovePolicy
     {
         enum AddressablePathStatus { Safe, PathBased, Unknown }
-
         public string ValidateEntry(AssetMoveEntry entry)
         {
             if (string.IsNullOrEmpty(entry.sourceGuid)) return "资源没有有效 GUID";
@@ -129,6 +149,8 @@ namespace Bento
             if (string.Equals(entry.sourcePath, "Assets", StringComparison.OrdinalIgnoreCase)) return "禁止移动 Assets 根目录";
             var mainAsset = AssetDatabase.LoadMainAssetAtPath(entry.sourcePath);
             if (entry.asset != null && mainAsset != null && entry.asset != mainAsset) return "FBX/模型内嵌子资源不能单独移动，请移动模型主资产";
+            string modelMaterialWarning = ValidateModelMaterialRemaps(entry.sourcePath);
+            if (!string.IsNullOrEmpty(modelMaterialWarning)) return modelMaterialWarning;
             if (!BentoUtility.IsProjectFolder(entry.targetFolder)) return "目标文件夹无效";
             if (entry.kind == AssetMoveKind.Folder && entry.targetFolder.StartsWith(entry.sourcePath.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase))
                 return "禁止把文件夹移动到自己的子目录";
@@ -139,6 +161,25 @@ namespace Bento
             if (addressable == AddressablePathStatus.Unknown) return "Addressables 风险检查失败，安全起见禁止移动";
             if (new[] { ".unity", ".cs", ".asmdef" }.Any(extension => entry.sourcePath.EndsWith(extension, StringComparison.OrdinalIgnoreCase)))
                 return "禁止移动场景、脚本或程序集定义";
+            return string.Empty;
+        }
+
+        static string ValidateModelMaterialRemaps(string sourcePath)
+        {
+            if (!sourcePath.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase) &&
+                !sourcePath.EndsWith(".obj", StringComparison.OrdinalIgnoreCase))
+                return string.Empty;
+
+            var importer = AssetImporter.GetAtPath(sourcePath) as ModelImporter;
+            if (importer == null) return "无法读取模型导入设置，禁止移动";
+
+            foreach (var pair in importer.GetExternalObjectMap())
+            {
+                if (pair.Key.type != typeof(Material)) continue;
+                if (pair.Value == null || string.IsNullOrEmpty(AssetDatabase.GetAssetPath(pair.Value)))
+                    return $"模型材质映射已失效（槽位：{pair.Key.name}）。移动会触发重导入并可能生成错误材质，请先修复材质映射";
+            }
+
             return string.Empty;
         }
 
@@ -153,7 +194,6 @@ namespace Bento
             var invalid = entries.FirstOrDefault(entry => !string.IsNullOrEmpty(entry.warning));
             if (invalid != null) throw new InvalidOperationException($"移动计划无效：{invalid.sourcePath}\n{invalid.warning}");
         }
-
 
         static AddressablePathStatus GetAddressablePathStatus(string guid, string sourcePath)
         {
