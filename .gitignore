@@ -12,12 +12,6 @@
 *.pidb
 *.booproj
 
-# Unity regenerates Editor script metadata; existing tracked meta files stay tracked.
-Bento/*.cs.meta
-
-# Accidental nested clone/repository beside the canonical Bento source.
-Tools/Bento/
-
 # Local AI/MCP configuration and secrets
 .mcp.json
 .claude/settings.local.json
@@ -30,11 +24,6 @@ Builds/
 # OS files
 .DS_Store
 Thumbs.db
-
-# Local source backups created during migration
-_backup_*/
-Bento工具备份/
-
 
 # Optional official Unity FBX packages installed locally.
 # Keep third-party binaries and licenses separate from Bento source control.
