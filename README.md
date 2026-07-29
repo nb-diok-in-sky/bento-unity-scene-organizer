@@ -5,6 +5,9 @@
 主要功能：
 
 - 材质、贴图扫描与批处理
+- Missing/Error/Built-in 材质的序列化属性恢复与 URP/Lit 迁移
+- 从选中 Prefab 收集材质，并在执行前逐项筛选和定位
+- 选中 FBX 与贴图后生成 URP/Lit 材质、重映射材质槽并创建 Prefab
 - Hierarchy 预制体替换与批量重命名
 - 场景资源变体生成，复制并重新绑定材质和贴图
 - Project 资产安全移动、重命名、GUID 验证和失败回滚
@@ -22,6 +25,25 @@ Assets/Editor/Bento
 MCP 相关脚本依赖 MCP for Unity。没有安装该插件的项目需要移除 MCP 相关脚本，或后续使用程序集宏隔离。
 
 本仓库不保存 `.mcp.json`、密钥或个人 AI 配置。
+
+## URP 材质恢复
+
+也可以直接载入 Project 中选中的材质，或收集选中 Prefab 的 Renderer 引用材质。
+
+执行前的列表支持全选、全不选、反选、只选疑似损坏 Shader 和逐项定位。迁移目标固定为
+`Universal Render Pipeline/Lit`。工具从材质序列化数据读取旧贴图、颜色和数值，因此原 Shader
+丢失或进入 `Hidden/InternalErrorShader` 时仍能尝试恢复常见属性。执行会写入 Undo，并在项目根目录
+的 `Bento_材质迁移备份` 中保存迁移清单。
+
+该流程只迁移常见 PBR 属性，不会复刻原自定义 Shader 的风、顶点动画、混合层、距离淡出或其他专属效果。
+
+## FBX 快速导入
+
+在 `资源 > FBX 快速导入` 中锁定一个 Project FBX，再选择一组贴图。工具会依据现有命名规则推断
+BaseColor、Normal、Metallic、AO、Height、Emission 等语义，列表中的类型可以手动修正。
+
+当前版本创建一个 URP/Lit 材质，并通过 `ModelImporter` 将它映射到 FBX 的全部材质槽。多材质槽的
+逐槽匹配尚未实现。`直接生成 Prefab` 会在内存中实例化 FBX 后保存 Prefab，不会修改当前场景。
 
 ## 可选依赖：Unity FBX Exporter
 
