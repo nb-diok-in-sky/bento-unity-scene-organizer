@@ -23,7 +23,7 @@ namespace Bento
                 Page("材质", "select_used_assets", "选中模型材质贴图", new SelectUsedAssetsTool(), tool => tool.Draw()),
                 Page("材质", "tag_layer", "Tag/Layer", new TagLayerTab(), tool => tool.Draw()),
                 Page("材质", "auto_process", "一键处理", new AutoProcessTab(context), tool => tool.Draw()),
-                Page("材质", "material_repair", "材质修复", new MaterialRepairTab(), tool => tool.Draw())
+                Page("材质", "material_repair", "材质修复", new MaterialRepairTab(), tool => tool.Draw()),
             });
 
             Pages = new List<IBentoPage>
@@ -35,6 +35,7 @@ namespace Bento
                 Page("资源", "asset_operation_history", "操作历史", new AssetOperationHistoryTool(), tool => tool.Draw()),
                 Page("资源", "obj_to_fbx", "OBJ 转项目 FBX", new ObjToFbxConversionTool(), tool => tool.Draw()),
                 Page("资源", "fbx_material_inherit", "FBX 材质继承", new ModelMaterialInheritanceTool(), tool => tool.Draw()),
+                Page("资源", "fbx_quick_setup", "FBX 快速导入", new FbxQuickSetupTool(), tool => tool.Draw()),
                 Page("资源", "ai_asset_organizer", "AI资产整理", new AIAssetOrganizerTool(), tool => tool.Draw()),
                 Page("资源", "asset_info", "资产信息", new AssetInfoExportTool(), tool => tool.Draw()),
                 Page("资源", "prefab_layer", "Prefab Layer", new PrefabLayerTool(), tool => tool.Draw()),
