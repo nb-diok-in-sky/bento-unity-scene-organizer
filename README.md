@@ -50,6 +50,10 @@ URP/Lit 使用的 `MetallicSmoothness` 与 `Occlusion` 两张贴图。窗口可�
 如果源贴图存储 Roughness，可以启用 Smoothness 反相。工具也会把 Normal 设置为 Normal Map，并将
 PackedMask 和生成的数据贴图设为 Linear。
 
+同一页面的“批量 FBX 转 Prefab”支持递归扫描来源文件夹，并将 Prefab 平铺到统一目录，或按来源
+子目录保留结构。执行前可以预览、定位和取消单项。已有同名 Prefab 时支持跳过、生成唯一名称或
+覆盖；默认使用保留目录结构和跳过策略。该批量入口只创建 Prefab，不自动修改材质。
+
 ## 可选依赖：Unity FBX Exporter
 
 `OBJ 转项目 FBX` 可以使用 Unity 官方 FBX Exporter。官方包与 Bento 适配层保持隔离，
