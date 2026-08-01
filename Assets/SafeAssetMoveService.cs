@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Bento
 {
@@ -61,5 +62,33 @@ namespace Bento
 
         public static void Execute(IReadOnlyList<AssetMoveEntry> entries, AssetMoveHistory history) => Executor.Execute(entries, history);
         public static void Restore(AssetMoveHistory history) => Executor.Restore(history);
+
+        public static List<AssetMoveEntry> BuildFlatExtractionPlan(IEnumerable<UnityEngine.Object> assets, string targetFolder)
+        {
+            var entries = assets.Where(asset => asset != null).Select(asset =>
+            {
+                string sourcePath = UnityEditor.AssetDatabase.GetAssetPath(asset);
+                return new AssetMoveEntry
+                {
+                    asset = asset,
+                    sourcePath = sourcePath,
+                    sourceGuid = UnityEditor.AssetDatabase.AssetPathToGUID(sourcePath),
+                    targetFolder = targetFolder,
+                    targetPath = $"{targetFolder.TrimEnd('/')}/{System.IO.Path.GetFileName(sourcePath)}",
+                    kind = ClassifyForExtraction(asset, sourcePath),
+                    include = true
+                };
+            }).ToList();
+            foreach (var entry in entries) entry.warning = Policy.ValidateEntry(entry);
+            return entries;
+        }
+
+        static AssetMoveKind ClassifyForExtraction(UnityEngine.Object asset, string path)
+        {
+            if (asset is UnityEngine.Material) return AssetMoveKind.Material;
+            if (asset is UnityEngine.Texture) return AssetMoveKind.Texture;
+            if (asset is UnityEngine.GameObject && (path.EndsWith(".prefab", System.StringComparison.OrdinalIgnoreCase) || path.EndsWith(".fbx", System.StringComparison.OrdinalIgnoreCase))) return AssetMoveKind.PrefabOrModel;
+            return AssetMoveKind.Other;
+        }
     }
 }
