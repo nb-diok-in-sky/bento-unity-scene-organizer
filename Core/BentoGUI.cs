@@ -1,4 +1,5 @@
 using UnityEditor;
+using UnityEngine;
 
 namespace Bento
 {
@@ -6,7 +7,16 @@ namespace Bento
     {
         public static DefaultAsset DrawProjectFolder(string label, DefaultAsset current, out string path)
         {
-            var next = (DefaultAsset)EditorGUILayout.ObjectField(label, current, typeof(DefaultAsset), false);
+            DefaultAsset next;
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                next = (DefaultAsset)EditorGUILayout.ObjectField(label, current, typeof(DefaultAsset), false);
+                if (GUILayout.Button("使用当前", GUILayout.Width(72)))
+                {
+                    if (ProjectSelection.TryGetActiveProjectFolder(out DefaultAsset selectedFolder)) next = selectedFolder;
+                    else EditorUtility.DisplayDialog("无法获取 Project 文件夹", "请在 Project 面板选中一个文件夹，或选中该文件夹内的任意资源。", "确定");
+                }
+            }
             path = next == null ? string.Empty : AssetDatabase.GetAssetPath(next);
             if (next == null || AssetDatabase.IsValidFolder(path)) return next;
             EditorGUILayout.HelpBox($"{label} 只能选择 Project 文件夹。", MessageType.Warning);

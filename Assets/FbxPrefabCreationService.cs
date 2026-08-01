@@ -59,9 +59,10 @@ namespace Bento
             ValidateFolder(sourceFolder, "来源文件夹");
             ValidateFolder(outputFolder, "输出文件夹");
             string resolvedOutputFolder = ResolveBatchOutputFolder(sourceFolder, outputFolder, createSourceNamedFolder);
-            return AssetDatabase.FindAssets("t:GameObject", new[] { sourceFolder })
+            return AssetDatabase.FindAssets(string.Empty, new[] { sourceFolder })
                 .Select(AssetDatabase.GUIDToAssetPath)
                 .Where(path => path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .Select(path => BuildEntry(path, sourceFolder, resolvedOutputFolder, folderMode, conflictMode))
                 .ToList();
