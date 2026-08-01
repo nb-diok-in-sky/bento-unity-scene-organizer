@@ -45,6 +45,11 @@ BaseColor、Normal、Metallic、AO、Height、Emission 等语义，列表中的�
 当前版本创建一个 URP/Lit 材质，并通过 `ModelImporter` 将它映射到 FBX 的全部材质槽。多材质槽的
 逐槽匹配尚未实现。`直接生成 Prefab` 会在内存中实例化 FBX 后保存 Prefab，不会修改当前场景。
 
+贴图列表支持 `PackedMask`。默认 MSA 预设按 `R=Metallic、G=Smoothness、B=AO` 读取，并生成
+URP/Lit 使用的 `MetallicSmoothness` 与 `Occlusion` 两张贴图。窗口可以修改每项数据的来源通道；
+如果源贴图存储 Roughness，可以启用 Smoothness 反相。工具也会把 Normal 设置为 Normal Map，并将
+PackedMask 和生成的数据贴图设为 Linear。
+
 ## 可选依赖：Unity FBX Exporter
 
 `OBJ 转项目 FBX` 可以使用 Unity 官方 FBX Exporter。官方包与 Bento 适配层保持隔离，

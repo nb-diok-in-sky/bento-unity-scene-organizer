@@ -11,6 +11,7 @@ namespace Bento
         List<FbxTextureBinding> _textures = new();
         DefaultAsset _outputFolder;
         Vector2 _scroll;
+        readonly PackedMaskLayout _maskLayout = new();
 
         public void Draw()
         {
@@ -39,20 +40,31 @@ namespace Bento
                     using (new EditorGUILayout.HorizontalScope(EditorStyles.helpBox))
                     {
                         EditorGUILayout.ObjectField(binding.texture, typeof(Texture2D), false, GUILayout.Width(210));
-                        binding.type = (TexType)EditorGUILayout.EnumPopup(binding.type);
+                        binding.role = (FbxTextureRole)EditorGUILayout.EnumPopup(binding.role);
                     }
                 }
                 EditorGUILayout.EndScrollView();
             }
 
+            if (_textures.Any(item => item.role == FbxTextureRole.PackedMask))
+            {
+                EditorGUILayout.Space(4);
+                EditorGUILayout.LabelField("打包贴图通道", EditorStyles.boldLabel);
+                EditorGUILayout.HelpBox("默认 MSA：R=Metallic，G=Smoothness，B=AO。若 G 实际是 Roughness，请勾选反相。", MessageType.None);
+                _maskLayout.metallic = (PackedMaskChannel)EditorGUILayout.EnumPopup("Metallic 来源", _maskLayout.metallic);
+                _maskLayout.smoothness = (PackedMaskChannel)EditorGUILayout.EnumPopup("Smoothness 来源", _maskLayout.smoothness);
+                _maskLayout.invertSmoothness = EditorGUILayout.Toggle("反相 Smoothness", _maskLayout.invertSmoothness);
+                _maskLayout.occlusion = (PackedMaskChannel)EditorGUILayout.EnumPopup("AO 来源", _maskLayout.occlusion);
+            }
+
             _outputFolder = BentoGUI.DrawProjectFolder("输出目录（留空为 FBX 同目录）", _outputFolder, out string folder);
-            bool canBind = FbxUrpMaterialBindingService.IsFbx(_fbx) && _textures.Any(item => item.type == TexType.BaseColor);
+            bool canBind = FbxUrpMaterialBindingService.IsFbx(_fbx) && _textures.Any(item => item.role == FbxTextureRole.BaseColor);
             using (new EditorGUI.DisabledScope(!canBind))
                 if (GUILayout.Button("生成 URP 材质并绑定 FBX", GUILayout.Height(34)) &&
                     BentoCommand.Confirm("绑定 FBX 材质", "将创建一个 URP/Lit 材质，并覆盖该 FBX 所有材质槽的外部映射。", "生成并绑定"))
                     BentoCommand.Run("FBX 材质绑定失败", () =>
                     {
-                        var material = FbxUrpMaterialBindingService.CreateAndBind(_fbx, _textures, folder);
+                        var material = FbxUrpMaterialBindingService.CreateAndBind(_fbx, _textures, _maskLayout, folder);
                         Selection.activeObject = material;
                         EditorGUIUtility.PingObject(material);
                     });
