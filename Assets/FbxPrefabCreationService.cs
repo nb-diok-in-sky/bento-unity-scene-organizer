@@ -53,16 +53,26 @@ namespace Bento
         }
 
         public static List<FbxPrefabBatchEntry> BuildBatchPlan(
-            string sourceFolder, string outputFolder, FbxPrefabFolderMode folderMode, FbxPrefabConflictMode conflictMode)
+            string sourceFolder, string outputFolder, bool createSourceNamedFolder,
+            FbxPrefabFolderMode folderMode, FbxPrefabConflictMode conflictMode)
         {
             ValidateFolder(sourceFolder, "来源文件夹");
             ValidateFolder(outputFolder, "输出文件夹");
+            string resolvedOutputFolder = ResolveBatchOutputFolder(sourceFolder, outputFolder, createSourceNamedFolder);
             return AssetDatabase.FindAssets("t:GameObject", new[] { sourceFolder })
                 .Select(AssetDatabase.GUIDToAssetPath)
                 .Where(path => path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .Select(path => BuildEntry(path, sourceFolder, outputFolder, folderMode, conflictMode))
+                .Select(path => BuildEntry(path, sourceFolder, resolvedOutputFolder, folderMode, conflictMode))
                 .ToList();
+        }
+
+        public static string ResolveBatchOutputFolder(string sourceFolder, string outputFolder, bool createSourceNamedFolder)
+        {
+            if (!createSourceNamedFolder) return outputFolder.TrimEnd('/');
+            string sourceName = Path.GetFileName(sourceFolder.TrimEnd('/'));
+            sourceName = BentoUtility.SanitizeFileName(sourceName, "FBX_Prefabs");
+            return outputFolder.TrimEnd('/') + "/" + sourceName;
         }
 
         public static FbxPrefabBatchResult ExecuteBatch(

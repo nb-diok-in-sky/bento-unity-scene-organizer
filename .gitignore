@@ -29,3 +29,4 @@ Thumbs.db
 # Keep third-party binaries and licenses separate from Bento source control.
 LocalPackages/com.unity.formats.fbx/
 LocalPackages/com.autodesk.fbx/
+

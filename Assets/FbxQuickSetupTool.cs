@@ -16,6 +16,7 @@ namespace Bento
         DefaultAsset _batchOutputFolder;
         FbxPrefabFolderMode _batchFolderMode = FbxPrefabFolderMode.PreserveFolders;
         FbxPrefabConflictMode _batchConflictMode = FbxPrefabConflictMode.Skip;
+        bool _createSourceNamedFolder = true;
         List<FbxPrefabBatchEntry> _batchPlan = new();
         Vector2 _batchScroll;
 
@@ -92,14 +93,19 @@ namespace Bento
             EditorGUILayout.HelpBox("递归扫描来源文件夹中的 FBX，批量创建 Prefab。此功能不会自动生成或修改材质。", MessageType.Info);
             _batchSourceFolder = BentoGUI.DrawProjectFolder("来源文件夹", _batchSourceFolder, out string batchSource);
             _batchOutputFolder = BentoGUI.DrawProjectFolder("Prefab 输出文件夹", _batchOutputFolder, out string batchOutput);
+            _createSourceNamedFolder = EditorGUILayout.Toggle("创建来源同名文件夹", _createSourceNamedFolder);
             _batchFolderMode = (FbxPrefabFolderMode)EditorGUILayout.EnumPopup("目录模式", _batchFolderMode);
             _batchConflictMode = (FbxPrefabConflictMode)EditorGUILayout.EnumPopup("同名处理", _batchConflictMode);
+
+            if (BentoUtility.IsProjectFolder(batchSource) && BentoUtility.IsProjectFolder(batchOutput))
+                EditorGUILayout.HelpBox("实际输出：" + FbxPrefabCreationService.ResolveBatchOutputFolder(
+                    batchSource, batchOutput, _createSourceNamedFolder), MessageType.None);
 
             bool validBatchFolders = BentoUtility.IsProjectFolder(batchSource) && BentoUtility.IsProjectFolder(batchOutput);
             using (new EditorGUI.DisabledScope(!validBatchFolders))
                 if (GUILayout.Button("扫描并预览 FBX", GUILayout.Height(28)))
                     BentoCommand.Run("FBX 扫描失败", () =>
-                        _batchPlan = FbxPrefabCreationService.BuildBatchPlan(batchSource, batchOutput, _batchFolderMode, _batchConflictMode));
+                        _batchPlan = FbxPrefabCreationService.BuildBatchPlan(batchSource, batchOutput, _createSourceNamedFolder, _batchFolderMode, _batchConflictMode));
 
             if (_batchPlan.Count == 0) return;
             using (new EditorGUILayout.HorizontalScope())
@@ -136,7 +142,7 @@ namespace Bento
                     BentoCommand.Run("批量生成 Prefab 失败", () =>
                     {
                         result = FbxPrefabCreationService.ExecuteBatch(_batchPlan, _batchConflictMode);
-                        _batchPlan = FbxPrefabCreationService.BuildBatchPlan(batchSource, batchOutput, _batchFolderMode, _batchConflictMode);
+                        _batchPlan = FbxPrefabCreationService.BuildBatchPlan(batchSource, batchOutput, _createSourceNamedFolder, _batchFolderMode, _batchConflictMode);
                     }, () => $"创建 {result.created}，覆盖 {result.overwritten}，跳过 {result.skipped}，失败 {result.failures.Count}。" +
                               (result.failures.Count > 0 ? "\n失败详情已输出到 Console。" : string.Empty));
                     if (result != null)
