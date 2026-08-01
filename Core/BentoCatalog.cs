@@ -28,6 +28,7 @@ namespace Bento
 
             Pages = new List<IBentoPage>
             {
+                Page("工作流", "model_import_workflow", "模型导入", new ModelImportWorkflowTool(), tool => tool.Draw()),
                 Page("资源", "folder_favorites", "文件夹收藏", new ProjectFolderFavoritesTool(), tool => tool.Draw()),
                 Page("资源", "batch_rename", "批量重命名", new BatchRenameTool(), tool => tool.Draw()),
                 Page("资源", "resource_variant", "资源变体", new ResourceVariantTool(), tool => tool.Draw()),
@@ -39,6 +40,8 @@ namespace Bento
                 Page("资源", "ai_asset_organizer", "AI资产整理", new AIAssetOrganizerTool(), tool => tool.Draw()),
                 Page("资源", "asset_info", "资产信息", new AssetInfoExportTool(), tool => tool.Draw()),
                 Page("资源", "prefab_layer", "Prefab Layer", new PrefabLayerTool(), tool => tool.Draw()),
+                Page("资源", "suffix_cleanup", "按后缀清理", new AssetSuffixCleanupTool(), tool => tool.Draw()),
+                Page("资源", "recursive_extract", "递归抽取资产", new RecursiveAssetExtractionTool(), tool => tool.Draw()),
                 Page("场景", "prefab_replace", "预制体替换", new PrefabReplacer(), tool => tool.Draw()),
                 Page("场景", "hierarchy_organization", "Hierarchy 整理", new HierarchyOrganizationTool(), tool => tool.Draw()),
                 Page("场景", "scene_light_batch", "场景光源批处理", new SceneLightBatchTool(), tool => tool.Draw()),

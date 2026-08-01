@@ -37,4 +37,21 @@ namespace Bento
         public bool invertSmoothness;
         public PackedMaskChannel occlusion = PackedMaskChannel.B;
     }
+
+    sealed class FbxBatchMaterialEntry
+    {
+        public GameObject fbx;
+        public Texture2D baseColor;
+        public Texture2D normal;
+        public Texture2D packedMask;
+        public string folder;
+        public bool include = true;
+        public string note;
+    }
+
+    sealed class FbxBatchMaterialResult
+    {
+        public int created;
+        public readonly System.Collections.Generic.List<string> failures = new();
+    }
 }

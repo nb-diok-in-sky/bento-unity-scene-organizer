@@ -27,6 +27,40 @@ namespace Bento
                 .ToList();
         }
 
+        public static List<FbxBatchMaterialEntry> BuildBatchMaterialPlan(string sourceFolder)
+        {
+            if (!BentoUtility.IsProjectFolder(sourceFolder)) throw new InvalidOperationException("来源文件夹无效。");
+            var paths = AssetDatabase.FindAssets(string.Empty, new[] { sourceFolder }).Select(AssetDatabase.GUIDToAssetPath).ToList();
+            var texturesByFolder = paths.Where(IsTexturePath)
+                .Select(path => new { path, folder = Path.GetDirectoryName(path)?.Replace('\\', '/') })
+                .GroupBy(item => item.folder, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Select(item => item.path).ToList(), StringComparer.OrdinalIgnoreCase);
+            return paths.Where(path => path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Select(path => BuildBatchMaterialEntry(path, texturesByFolder)).ToList();
+        }
+
+        public static FbxBatchMaterialResult ExecuteBatchMaterials(IEnumerable<FbxBatchMaterialEntry> entries, PackedMaskLayout layout)
+        {
+            var result = new FbxBatchMaterialResult();
+            foreach (var entry in entries.Where(item => item.include && item.fbx != null))
+            {
+                try
+                {
+                    CreateAndBind(entry.fbx, new[]
+                    {
+                        new FbxTextureBinding { texture = entry.baseColor, role = FbxTextureRole.BaseColor },
+                        new FbxTextureBinding { texture = entry.normal, role = FbxTextureRole.Normal },
+                        new FbxTextureBinding { texture = entry.packedMask, role = FbxTextureRole.PackedMask }
+                    }, layout, entry.folder);
+                    result.created++;
+                }
+                catch (Exception exception) { result.failures.Add($"{AssetDatabase.GetAssetPath(entry.fbx)}: {exception.Message}"); }
+            }
+            AssetDatabase.SaveAssets();
+            return result;
+        }
+
         public static Material CreateAndBind(GameObject fbx, IEnumerable<FbxTextureBinding> bindings, PackedMaskLayout maskLayout, string selectedFolder)
         {
             if (!IsFbx(fbx)) throw new InvalidOperationException("请选择 Project 中的 .fbx 资产。");
@@ -92,6 +126,38 @@ namespace Bento
                 TexType.Emission => FbxTextureRole.Emission,
                 _ => FbxTextureRole.Ignore
             };
+        }
+
+        static FbxBatchMaterialEntry BuildBatchMaterialEntry(string fbxPath, IReadOnlyDictionary<string, List<string>> texturesByFolder)
+        {
+            string folder = Path.GetDirectoryName(fbxPath)?.Replace('\\', '/');
+            texturesByFolder.TryGetValue(folder, out var texturePaths);
+            texturePaths ??= new List<string>();
+            Texture2D baseColor = LoadFirst(texturePaths, "_A", "_Albedo", "_BaseColor");
+            Texture2D normal = LoadFirst(texturePaths, "_N", "_Normal");
+            Texture2D packed = LoadFirst(texturePaths, "_MSA", "_Mask", "_Packed");
+            var missing = new List<string>();
+            if (baseColor == null) missing.Add("A/BaseColor");
+            if (normal == null) missing.Add("N/Normal");
+            if (packed == null) missing.Add("MSA/Mask");
+            return new FbxBatchMaterialEntry
+            {
+                fbx = AssetDatabase.LoadAssetAtPath<GameObject>(fbxPath), baseColor = baseColor, normal = normal,
+                packedMask = packed, folder = folder, include = missing.Count == 0,
+                note = missing.Count == 0 ? "匹配完整" : "缺少：" + string.Join(", ", missing)
+            };
+        }
+
+        static Texture2D LoadFirst(IEnumerable<string> paths, params string[] suffixes)
+        {
+            string path = paths.FirstOrDefault(candidate => suffixes.Any(suffix => Path.GetFileNameWithoutExtension(candidate).EndsWith(suffix, StringComparison.OrdinalIgnoreCase)));
+            return string.IsNullOrEmpty(path) ? null : AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        }
+
+        static bool IsTexturePath(string path)
+        {
+            string extension = Path.GetExtension(path);
+            return new[] { ".tga", ".png", ".jpg", ".jpeg", ".tif", ".tiff" }.Any(value => extension.Equals(value, StringComparison.OrdinalIgnoreCase));
         }
 
         static bool TryGetUrpProperty(FbxTextureRole role, out string property)
