@@ -25,7 +25,7 @@ namespace Bento
 
             DrawMaterialPicker();
 
-            List<GameObject> current = ResolveSelectedRoots();
+            List<GameObject> current = UsedAssetSelectionScanner.ResolveCurrentRoots();
             using (new EditorGUILayout.HorizontalScope())
             {
                 using (new EditorGUI.DisabledScope(current.Count == 0))
@@ -94,12 +94,12 @@ namespace Bento
         internal static void SelectAdvancedFromCurrentSelection()
         {
             var tool = new SelectUsedAssetsTool();
-            tool.Scan(ResolveSelectedRoots());
+            tool.Scan(UsedAssetSelectionScanner.ResolveCurrentRoots());
         }
 
         [MenuItem("GameObject/Bento/选中物体的模型、材质和贴图", true)]
         [MenuItem("Assets/Bento/选中物体的模型、材质和贴图", true)]
-        internal static bool ValidateSelection() => ResolveSelectedRoots().Count > 0;
+        internal static bool ValidateSelection() => UsedAssetSelectionScanner.ResolveCurrentRoots().Count > 0;
 
         internal static string BuildTextureScanDiagnosticFromCurrentSelection()
         {

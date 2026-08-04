@@ -25,10 +25,10 @@ namespace Bento
                 ["get_project_selection"] = _ => GetProjectSelection(),
                 ["diagnose_selected_textures"] = _ => new SuccessResponse(
                     "Selected texture scan diagnosed without modification.",
-                    new { report = SelectUsedAssetsTool.BuildTextureScanDiagnosticFromCurrentSelection() }),
+                    new { report = UsedAssetSelectionDiagnosticService.BuildFromCurrentSelection() }),
                 ["diagnose_object_textures"] = value => new SuccessResponse(
                     "Named object texture scan diagnosed without modification.",
-                    new { report = SelectUsedAssetsTool.BuildTextureScanDiagnosticByName(value?["object_name"]?.ToString()) }),
+                    new { report = UsedAssetSelectionDiagnosticService.BuildByObjectName(value?["object_name"]?.ToString()) }),
                 ["audit_prefab_materials"] = value => AuditPrefabMaterials(value),
                 ["analyze_asset_move"] = AnalyzeAssetMove,
                 ["analyze_ai_asset_organizer"] = AnalyzeAIAssetOrganizer,
