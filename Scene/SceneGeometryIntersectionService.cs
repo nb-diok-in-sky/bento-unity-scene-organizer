@@ -195,8 +195,8 @@ namespace Bento
         {
             firstInstanceId = first.root.GetInstanceID(),
             secondInstanceId = second.root.GetInstanceID(),
-            firstPath = HierarchyPath(first.root.transform),
-            secondPath = HierarchyPath(second.root.transform),
+            firstPath = BentoUtility.GetHierarchyPath(first.root.transform),
+            secondPath = BentoUtility.GetHierarchyPath(second.root.transform),
             firstScene = first.root.scene.path,
             secondScene = second.root.scene.path,
             kind = kind,
@@ -217,11 +217,5 @@ namespace Bento
         static bool IsSameHierarchy(Transform first, Transform second) =>
             first == second || first.IsChildOf(second) || second.IsChildOf(first);
 
-        static string HierarchyPath(Transform transform)
-        {
-            string path = transform.name;
-            for (var parent = transform.parent; parent != null; parent = parent.parent) path = parent.name + "/" + path;
-            return path;
-        }
     }
 }

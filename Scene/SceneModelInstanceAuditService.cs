@@ -37,7 +37,7 @@ namespace Bento
                 {
                     instanceId = gameObject.GetInstanceID(),
                     objectName = gameObject.name,
-                    hierarchyPath = HierarchyPath(gameObject.transform),
+                    hierarchyPath = BentoUtility.GetHierarchyPath(gameObject.transform),
                     scenePath = gameObject.scene.path,
                     modelAssetPath = modelPath,
                     modelExtension = Path.GetExtension(modelPath).ToLowerInvariant()
@@ -88,12 +88,5 @@ namespace Bento
                 yield return transform.gameObject;
         }
 
-        static string HierarchyPath(Transform transform)
-        {
-            string path = transform.name;
-            for (Transform parent = transform.parent; parent != null; parent = parent.parent)
-                path = parent.name + "/" + path;
-            return path;
-        }
     }
 }

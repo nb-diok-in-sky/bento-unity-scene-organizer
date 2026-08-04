@@ -30,6 +30,15 @@ namespace Bento
                 : result.ToList();
         }
 
+        public static string GetHierarchyPath(Transform transform)
+        {
+            if (transform == null) return string.Empty;
+            string path = transform.name;
+            for (Transform parent = transform.parent; parent != null; parent = parent.parent)
+                path = parent.name + "/" + path;
+            return path;
+        }
+
         public static bool IsProjectFolder(string path)
         {
             return !string.IsNullOrEmpty(path) &&

@@ -18,7 +18,7 @@ namespace Bento
                 "先锁定 Hierarchy 物体或 Project 中的 Prefab/FBX，再逐个定位材质。定位单个材质后，仍可点击“重新全选”恢复整组选择。",
                 MessageType.Info);
 
-            List<GameObject> currentRoots = ResolveSelectedRoots();
+            List<GameObject> currentRoots = UsedAssetSelectionScanner.ResolveCurrentRoots();
             using (new EditorGUILayout.HorizontalScope())
             {
                 using (new EditorGUI.DisabledScope(currentRoots.Count == 0))
@@ -58,7 +58,7 @@ namespace Bento
         [MenuItem("Assets/Bento/选中物体使用的全部材质", false, -9000)]
         internal static void SelectMaterialsFromCurrentSelection()
         {
-            Material[] materials = CollectMaterials(ResolveSelectedRoots());
+            Material[] materials = CollectMaterials(UsedAssetSelectionScanner.ResolveCurrentRoots());
             if (materials.Length == 0)
             {
                 EditorUtility.DisplayDialog("没有找到材质", "当前选择及其子物体没有引用任何材质球。", "确定");
@@ -70,7 +70,7 @@ namespace Bento
 
         [MenuItem("GameObject/Bento/选中物体使用的全部材质", true)]
         [MenuItem("Assets/Bento/选中物体使用的全部材质", true)]
-        internal static bool ValidateSelection() => ResolveSelectedRoots().Count > 0;
+        internal static bool ValidateSelection() => UsedAssetSelectionScanner.ResolveCurrentRoots().Count > 0;
 
         void Scan(IReadOnlyList<GameObject> roots)
         {
@@ -99,34 +99,7 @@ namespace Bento
 
         static Material[] CollectMaterials(IEnumerable<GameObject> roots)
         {
-            return roots.Where(root => root != null)
-                .SelectMany(root => root.GetComponentsInChildren<Renderer>(true))
-                .SelectMany(renderer => renderer.sharedMaterials)
-                .Where(material => material != null)
-                .Distinct()
-                .OrderBy(material => AssetDatabase.GetAssetPath(material))
-                .ThenBy(material => material.name)
-                .ToArray();
-        }
-
-        static List<GameObject> ResolveSelectedRoots()
-        {
-            var roots = new List<GameObject>();
-            foreach (UnityEngine.Object selected in Selection.objects)
-            {
-                GameObject root = ResolveGameObject(selected);
-                if (root != null && !roots.Contains(root)) roots.Add(root);
-            }
-            return roots;
-        }
-
-        static GameObject ResolveGameObject(UnityEngine.Object selected)
-        {
-            if (selected is Component component) return component.gameObject;
-            if (selected is GameObject gameObject) return gameObject;
-            string path = selected != null ? AssetDatabase.GetAssetPath(selected) : string.Empty;
-            if (string.IsNullOrEmpty(path)) return null;
-            return selected is Material ? null : AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            return UsedAssetSelectionScanner.Scan(roots).materials.ToArray();
         }
     }
 }

@@ -18,7 +18,7 @@ namespace Bento
                 {
                     name = gameObject.name,
                     scene = gameObject.scene.path,
-                    hierarchy_path = HierarchyPath(gameObject.transform),
+                    hierarchy_path = BentoUtility.GetHierarchyPath(gameObject.transform),
                     prefab_asset_path = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject),
                     renderer_count = gameObject.GetComponentsInChildren<Renderer>(true).Length
                 }).ToArray()
@@ -105,14 +105,8 @@ namespace Bento
 
         static void AddSample(ICollection<string> samples, GameObject gameObject, string issue)
         {
-            if (samples.Count < 40) samples.Add($"{gameObject.scene.path} :: {HierarchyPath(gameObject.transform)} :: {issue}");
-        }
-
-        static string HierarchyPath(Transform transform)
-        {
-            string path = transform.name;
-            for (var parent = transform.parent; parent != null; parent = parent.parent) path = parent.name + "/" + path;
-            return path;
+            if (samples.Count < 40)
+                samples.Add($"{gameObject.scene.path} :: {BentoUtility.GetHierarchyPath(gameObject.transform)} :: {issue}");
         }
     }
 }
