@@ -46,6 +46,7 @@ namespace Bento
                 Page("场景", "hierarchy_organization", "Hierarchy 整理", new HierarchyOrganizationTool(), tool => tool.Draw()),
                 Page("场景", "scene_light_batch", "场景光源批处理", new SceneLightBatchTool(), tool => tool.Draw()),
                 Page("场景", "scene_renderer_shadow", "场景物体阴影", new SceneRendererShadowBatchTool(), tool => tool.Draw()),
+                Page("场景", "scene_model_instance_audit", "FBX 实例检查", new SceneModelInstanceAuditTool(), tool => tool.Draw()),
                 Page("场景", "geometry_intersections", "几何相交审查", new SceneGeometryIntersectionTool(), tool => tool.Draw()),
                 Page("材质", "material_tools", "材质工具", MaterialPage, tool => tool.Draw()),
                 Page("AI与设置", "ai_mcp", "AI/MCP", new McpIntegrationTool(), tool => tool.Draw())

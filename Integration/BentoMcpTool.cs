@@ -42,7 +42,10 @@ namespace Bento
                 ["validate_loaded_scenes"] = _ => new SuccessResponse("Loaded scenes validated without modification.", McpSceneAnalysisFacade.ValidateLoadedScenes()),
                 ["scan_geometry_intersections"] = ScanGeometryIntersections,
                 ["get_geometry_intersections"] = _ => GetGeometryIntersections(),
-                ["clear_geometry_intersections"] = _ => ClearGeometryIntersections()
+                ["clear_geometry_intersections"] = _ => ClearGeometryIntersections(),
+                ["scan_scene_model_instances"] = ScanSceneModelInstances,
+                ["get_scene_model_instances"] = _ => GetSceneModelInstances(),
+                ["clear_scene_model_instances"] = _ => ClearSceneModelInstances()
             };
 
         public static object HandleCommand(JObject parameters)
@@ -228,6 +231,32 @@ namespace Bento
                 case "all": return SceneGeometryScanScope.LoadedScenes;
                 default: return SceneGeometryScanScope.SelectionAgainstScene;
             }
+        }
+
+        static object ScanSceneModelInstances(JObject parameters)
+        {
+            string value = parameters?["scope"]?.ToString();
+            SceneModelInstanceAuditScope scope =
+                string.Equals(value, "selection", StringComparison.OrdinalIgnoreCase)
+                    ? SceneModelInstanceAuditScope.Selection
+                    : SceneModelInstanceAuditScope.LoadedScenes;
+            return new SuccessResponse(
+                "Direct FBX/OBJ scene instances scanned without modifying the scene.",
+                SceneModelInstanceAuditService.Scan(scope));
+        }
+
+        static object GetSceneModelInstances()
+        {
+            SceneModelInstanceAuditResult result = SceneModelInstanceAuditSession.Current;
+            return result == null
+                ? (object)new ErrorResponse("No scene model instance audit is cached. Run scan_scene_model_instances first.")
+                : new SuccessResponse("Cached scene model instance audit read.", result);
+        }
+
+        static object ClearSceneModelInstances()
+        {
+            SceneModelInstanceAuditSession.Clear();
+            return new SuccessResponse("Cached scene model instance audit cleared.");
         }
 
     }
