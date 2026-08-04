@@ -185,6 +185,8 @@ namespace Bento
                         .ToArray();
             }
 
+            DrawCompensationActions(risks);
+
             int displayCount = Mathf.Min(risks.Count, 20);
             for (int index = 0; index < displayCount; index++)
             {
@@ -199,6 +201,47 @@ namespace Bento
 
             if (risks.Count > displayCount)
                 EditorGUILayout.LabelField($"仅显示前 {displayCount} 个；可点击“选中全部风险对象”统一检查。", EditorStyles.miniLabel);
+        }
+
+        void DrawCompensationActions(IReadOnlyList<HierarchyOrganizationEntry> risks)
+        {
+            HierarchyCompensationPreview individual = HierarchyCompensationService.Preview(
+                risks, _targetParent, HierarchyCompensationMode.Individual);
+            HierarchyCompensationPreview shared = HierarchyCompensationService.Preview(
+                risks, _targetParent, HierarchyCompensationMode.Shared);
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("安全补偿方案", EditorStyles.boldLabel);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                using (new EditorGUI.DisabledScope(!individual.canExecute))
+                    if (GUILayout.Button(
+                            $"独立补偿并归入（创建 {individual.compensationNodeCount} 个节点）",
+                            GUILayout.Height(34)))
+                        ExecuteCompensation(individual);
+
+                using (new EditorGUI.DisabledScope(!shared.canExecute))
+                    if (GUILayout.Button(
+                            $"共享补偿并归入（创建 {shared.compensationNodeCount} 个节点）",
+                            GUILayout.Height(34)))
+                        ExecuteCompensation(shared);
+            }
+
+            if (!shared.canExecute && !string.IsNullOrEmpty(shared.reason))
+                EditorGUILayout.HelpBox($"共享方案不可用：{shared.reason}", MessageType.Info);
+        }
+
+        void ExecuteCompensation(HierarchyCompensationPreview preview)
+        {
+            BentoCommand.Run("安全补偿归入失败", () =>
+            {
+                int compensationCount = HierarchyCompensationService.Execute(preview, _targetParent);
+                Selection.activeGameObject = _targetParent.gameObject;
+                EditorGUIUtility.PingObject(_targetParent.gameObject);
+                _quickPlanDirty = true;
+                Debug.Log(
+                    $"[Bento] 已安全归入 {preview.entries.Count} 个风险对象，创建 {compensationCount} 个补偿节点，可使用 Ctrl+Z 一次撤销。");
+            });
         }
 
         void DrawCreateGroup()
