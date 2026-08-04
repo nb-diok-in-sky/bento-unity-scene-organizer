@@ -19,12 +19,18 @@ namespace Bento
             IReadOnlyDictionary<AssetMoveKind, string> targetFolders,
             AssetNamingOptions naming)
         {
-            var entries = new List<AssetMoveEntry>();
-            var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var asset in assets.Where(asset => asset != null))
-                AddSelectedAsset(asset, AssetDatabase.GetAssetPath(asset), entries, seenPaths);
-
+            var entries = CollectEntries(assets);
             RefreshTargets(entries, targetFolders, naming);
+            return entries;
+        }
+
+        public List<AssetMoveEntry> Build(
+            IEnumerable<UnityEngine.Object> assets,
+            IReadOnlyDictionary<AssetMoveKind, string> targetFolders,
+            Func<AssetMoveKind, AssetNamingOptions> namingByKind)
+        {
+            var entries = CollectEntries(assets);
+            RefreshTargets(entries, targetFolders, namingByKind);
             return entries;
         }
 
@@ -35,6 +41,62 @@ namespace Bento
         {
             ApplyTargets(entries, targetFolders, naming);
             foreach (var entry in entries) entry.warning = _policy.ValidateEntry(entry);
+        }
+
+        public void RefreshTargets(
+            IReadOnlyList<AssetMoveEntry> entries,
+            IReadOnlyDictionary<AssetMoveKind, string> targetFolders,
+            Func<AssetMoveKind, AssetNamingOptions> namingByKind)
+        {
+            ApplyTargets(entries, targetFolders, namingByKind);
+            foreach (var entry in entries) entry.warning = _policy.ValidateEntry(entry);
+        }
+
+        static List<AssetMoveEntry> CollectEntries(IEnumerable<UnityEngine.Object> assets)
+        {
+            var entries = new List<AssetMoveEntry>();
+            var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var asset in assets.Where(asset => asset != null))
+                AddSelectedAsset(asset, AssetDatabase.GetAssetPath(asset), entries, seenPaths);
+            return entries;
+        }
+
+        static void ApplyTargets(
+            IReadOnlyList<AssetMoveEntry> entries,
+            IReadOnlyDictionary<AssetMoveKind, string> targetFolders,
+            Func<AssetMoveKind, AssetNamingOptions> namingByKind)
+        {
+            var reservedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var group in entries.GroupBy(entry => entry.kind))
+            {
+                AssetNamingOptions naming = namingByKind?.Invoke(group.Key) ?? new AssetNamingOptions();
+                int index = 0;
+                foreach (var entry in group)
+                {
+                    entry.targetFolder = targetFolders.TryGetValue(entry.kind, out string folder) ? folder : string.Empty;
+                    string extension = Path.GetExtension(entry.sourcePath);
+                    string originalName = Path.GetFileNameWithoutExtension(entry.sourcePath);
+                    string targetName = AssetNaming.BuildName(originalName, index, naming);
+                    entry.targetPath = BuildTargetPath(entry, folder, targetName, extension);
+                    if (naming.appendNumber && !string.IsNullOrEmpty(folder))
+                        entry.targetPath = FindAvailablePath(entry, folder, targetName, extension, reservedTargets);
+                    reservedTargets.Add(entry.targetPath);
+                    index++;
+                }
+            }
+        }
+
+        static string FindAvailablePath(
+            AssetMoveEntry entry,
+            string folder,
+            string targetName,
+            string extension,
+            ISet<string> reservedTargets)
+        {
+            string candidate = BuildTargetPath(entry, folder, targetName, extension);
+            if (!reservedTargets.Contains(candidate) && string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(candidate)))
+                return candidate;
+            return AssetDatabase.GenerateUniqueAssetPath(candidate);
         }
 
         static void ApplyTargets(

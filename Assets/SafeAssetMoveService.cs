@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 using System.Linq;
 
 namespace Bento
@@ -34,6 +35,19 @@ namespace Bento
             AssetNamingOptions naming)
         {
             return Planner.Build(selectedAssets, BuildTargetFolders(prefabFolder, materialFolder, textureFolder, otherFolder), naming ?? new AssetNamingOptions());
+        }
+
+        public static List<AssetMoveEntry> BuildPlan(
+            IEnumerable<UnityEngine.Object> selectedAssets,
+            string modelFolder,
+            string materialFolder,
+            string textureFolder,
+            Func<AssetMoveKind, AssetNamingOptions> namingByKind)
+        {
+            return Planner.Build(
+                selectedAssets,
+                BuildTargetFolders(modelFolder, materialFolder, textureFolder, modelFolder),
+                namingByKind);
         }
 
         public static void RefreshTargets(
