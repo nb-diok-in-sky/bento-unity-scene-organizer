@@ -56,7 +56,7 @@ namespace Bento
 
         [MenuItem("GameObject/Bento/选中物体使用的全部材质", false, -9000)]
         [MenuItem("Assets/Bento/选中物体使用的全部材质", false, -9000)]
-        static void SelectMaterialsFromCurrentSelection()
+        internal static void SelectMaterialsFromCurrentSelection()
         {
             Material[] materials = CollectMaterials(ResolveSelectedRoots());
             if (materials.Length == 0)
@@ -70,7 +70,7 @@ namespace Bento
 
         [MenuItem("GameObject/Bento/选中物体使用的全部材质", true)]
         [MenuItem("Assets/Bento/选中物体使用的全部材质", true)]
-        static bool ValidateSelection() => ResolveSelectedRoots().Count > 0;
+        internal static bool ValidateSelection() => ResolveSelectedRoots().Count > 0;
 
         void Scan(IReadOnlyList<GameObject> roots)
         {

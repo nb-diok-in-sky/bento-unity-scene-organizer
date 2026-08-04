@@ -23,6 +23,13 @@ namespace Bento
                 ["open_toolbox"] = value => OpenToolbox(value?["page"]?.ToString()),
                 ["analyze_resource_variant"] = AnalyzeResourceVariant,
                 ["get_project_selection"] = _ => GetProjectSelection(),
+                ["diagnose_selected_textures"] = _ => new SuccessResponse(
+                    "Selected texture scan diagnosed without modification.",
+                    new { report = SelectUsedAssetsTool.BuildTextureScanDiagnosticFromCurrentSelection() }),
+                ["diagnose_object_textures"] = value => new SuccessResponse(
+                    "Named object texture scan diagnosed without modification.",
+                    new { report = SelectUsedAssetsTool.BuildTextureScanDiagnosticByName(value?["object_name"]?.ToString()) }),
+                ["audit_prefab_materials"] = value => AuditPrefabMaterials(value),
                 ["analyze_asset_move"] = AnalyzeAssetMove,
                 ["analyze_ai_asset_organizer"] = AnalyzeAIAssetOrganizer,
                 ["analyze_selected_asset_info"] = _ => AnalyzeSelectedAssetInfo(),
@@ -166,6 +173,18 @@ namespace Bento
                 startNumber = parameters?["start_number"]?.Value<int?>() ?? 1,
                 numberDigits = parameters?["number_digits"]?.Value<int?>() ?? 2
             };
+        }
+
+        static object AuditPrefabMaterials(JObject parameters)
+        {
+            string materialFolder = parameters?["material_folder"]?.ToString();
+            string[] prefabPaths = (parameters?["prefab_paths"] as JArray)?
+                .Select(item => item?.ToString())
+                .Where(path => !string.IsNullOrEmpty(path))
+                .ToArray() ?? Array.Empty<string>();
+            return new SuccessResponse(
+                "Prefab material references audited without modification.",
+                PrefabMaterialAuditService.Audit(materialFolder, prefabPaths));
         }
 
         static object ScanGeometryIntersections(JObject parameters)
