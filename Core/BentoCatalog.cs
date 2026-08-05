@@ -28,6 +28,7 @@ namespace Bento
                 Page("资源、模型和预制体", "model_import_workflow", "模型导入", new ModelImportWorkflowTool(), tool => tool.Draw()),
                 Page("资源、模型和预制体", "resource_variant", "资源变体", new ResourceVariantTool(), tool => tool.Draw()),
                 Page("资源、模型和预制体", "obj_to_fbx", "OBJ 转项目 FBX", new ObjToFbxConversionTool(), tool => tool.Draw()),
+                Page("资源、模型和预制体", "blender_building_surface", "Blender 建筑内外墙", new BlenderBuildingSurfaceTool(), tool => tool.Draw()),
                 Page("资源、模型和预制体", "fbx_material_inherit", "FBX 材质继承", new ModelMaterialInheritanceTool(), tool => tool.Draw()),
                 Page("资源、模型和预制体", "fbx_quick_setup", "FBX 快速导入", new FbxQuickSetupTool(), tool => tool.Draw()),
                 Page("资源、模型和预制体", "prefab_layer", "Prefab Layer", new PrefabLayerTool(), tool => tool.Draw()),

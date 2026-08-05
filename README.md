@@ -16,6 +16,20 @@
 - Terrain 当前绘制层贴图的独立选择入口，避免混入普通模型资产
 - 根据 Hierarchy 或 Project 当前选择生成对应的 Bento 智能右键菜单
 - 可选 MCP 只读分析接口
+- 从 Unity 中选中 FBX，一键启动 Blender 并加载建筑内外墙拆分插件
+
+## Blender 建筑内外墙拆分
+
+仓库的 `BlenderTools/BuildingSurfaceSplitter` 包含独立 Blender 插件。它不会参与
+Unity C# 编译，也不会要求只使用 Unity 工具的使用者安装 Blender。
+
+在 `资源、模型和预制体 > Blender 建筑内外墙拆分` 中选择 Project 里的 FBX，
+首次指定本机 `blender.exe` 后即可一键启动 Blender、导入模型并加载插件。
+Blender 路径保存在本机 `EditorPrefs`，不会提交到 Git。
+
+插件使用一个或多个不可穿墙的室内方块辅助区分内墙、外墙和双层窗户纸，
+支持检查选中分类面、手工修正、按自定义名称分离，并导出新的 FBX。
+详细步骤见 `BlenderTools/BuildingSurfaceSplitter/README.md`。
 
 ## 在 Unity 项目中使用
 
