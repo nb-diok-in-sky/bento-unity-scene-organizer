@@ -12,6 +12,9 @@ namespace Bento
     {
         const string BlenderPathKeyPrefix = "Bento.BlenderExecutable.";
         string _blenderExecutable;
+        readonly string _addonPath;
+        readonly string _launchScriptPath;
+        readonly string _integrationError;
         GameObject _selectedFbx;
 
         string BlenderPathKey => BentoUtility.GetProjectEditorPrefsKey(BlenderPathKeyPrefix);
@@ -21,6 +24,15 @@ namespace Bento
             _blenderExecutable = EditorPrefs.GetString(BlenderPathKey, string.Empty);
             if (!File.Exists(_blenderExecutable))
                 _blenderExecutable = FindBlenderExecutable();
+            try
+            {
+                _addonPath = BlenderBuildingSurfaceLauncher.ResolveAddonPath();
+                _launchScriptPath = BlenderBuildingSurfaceLauncher.ResolveLaunchScriptPath(_addonPath);
+            }
+            catch (Exception exception)
+            {
+                _integrationError = exception.Message;
+            }
             LockSelectedFbx();
         }
 
@@ -49,37 +61,29 @@ namespace Bento
 
             string fbxAssetPath = _selectedFbx == null ? string.Empty : AssetDatabase.GetAssetPath(_selectedFbx);
             string fbxAbsolutePath = ResolveAssetAbsolutePath(fbxAssetPath);
-            string addonPath = string.Empty;
-            string launchScriptPath = string.Empty;
-            string integrationError = string.Empty;
-            try
-            {
-                addonPath = BlenderBuildingSurfaceLauncher.ResolveAddonPath();
-                launchScriptPath = BlenderBuildingSurfaceLauncher.ResolveLaunchScriptPath();
-            }
-            catch (Exception exception)
-            {
-                integrationError = exception.Message;
-            }
             if (!IsFbx(_selectedFbx))
                 EditorGUILayout.HelpBox("请在 Project 面板选择一个 .fbx 模型资产。", MessageType.Warning);
             if (string.IsNullOrEmpty(_blenderExecutable) || !File.Exists(_blenderExecutable))
                 EditorGUILayout.HelpBox("尚未找到 Blender。首次使用时请指定 blender.exe；路径只保存在本机。", MessageType.Warning);
-            if (!string.IsNullOrEmpty(integrationError))
-                EditorGUILayout.HelpBox(integrationError, MessageType.Error);
-            else if (!Directory.Exists(addonPath) || !File.Exists(launchScriptPath))
+            if (!string.IsNullOrEmpty(_integrationError))
+                EditorGUILayout.HelpBox(_integrationError, MessageType.Error);
+            else if (!Directory.Exists(_addonPath) || !File.Exists(_launchScriptPath))
                 EditorGUILayout.HelpBox("仓库中的 Blender 插件文件不完整，请确认 BlenderTools/BuildingSurfaceSplitter 已同步。", MessageType.Error);
 
             bool canLaunch = IsFbx(_selectedFbx)
                              && File.Exists(fbxAbsolutePath)
                              && File.Exists(_blenderExecutable)
-                             && Directory.Exists(addonPath)
-                             && File.Exists(launchScriptPath);
+                             && Directory.Exists(_addonPath)
+                             && File.Exists(_launchScriptPath);
             using (new EditorGUI.DisabledScope(!canLaunch))
             {
                 if (GUILayout.Button("在 Blender 中打开选中 FBX", GUILayout.Height(40)))
                     BentoCommand.Run("启动 Blender 失败", () =>
-                        BlenderBuildingSurfaceLauncher.Launch(_blenderExecutable, fbxAbsolutePath, launchScriptPath, addonPath));
+                        BlenderBuildingSurfaceLauncher.Launch(
+                            _blenderExecutable,
+                            fbxAbsolutePath,
+                            _launchScriptPath,
+                            _addonPath));
             }
 
             EditorGUILayout.Space(8);
@@ -180,7 +184,8 @@ namespace Bento
             return Path.GetFullPath(Path.Combine(ResolveToolboxRoot(), "BlenderTools", "BuildingSurfaceSplitter"));
         }
 
-        public static string ResolveLaunchScriptPath() => Path.Combine(ResolveAddonPath(), "launch_from_unity.py");
+        public static string ResolveLaunchScriptPath(string addonPath) =>
+            Path.Combine(addonPath, "launch_from_unity.py");
 
         public static void Launch(string blenderExecutable, string fbxPath, string launchScriptPath, string addonPath)
         {

@@ -21,6 +21,7 @@ CLASS_UNCLASSIFIED = 0
 CLASS_INTERIOR = 1
 CLASS_EXTERIOR = 2
 CLASS_EXCLUDED = 3
+FLOOR_NAME_HINTS = ("地板", "地面", "floor", "ground")
 
 
 def is_mesh_object(obj):
@@ -37,6 +38,11 @@ def is_excluded_object(obj):
 
 def is_output_object(obj):
     return bool(obj and obj.get("bento_surface_output"))
+
+
+def is_floor_object(obj):
+    name = obj.name.casefold()
+    return any(hint in name for hint in FLOOR_NAME_HINTS)
 
 
 def is_target_object(obj):
@@ -79,6 +85,22 @@ def point_inside_volume(world_point, volume_obj, tolerance):
         -half.x <= local.x <= half.x
         and -half.y <= local.y <= half.y
         and -half.z <= local.z <= half.z
+    )
+
+
+def point_inside_volume_horizontal(world_point, volume_obj, tolerance):
+    local = volume_obj.matrix_world.inverted_safe() @ world_point
+    half = 0.5 + tolerance
+    return -half <= local.x <= half and -half <= local.y <= half
+
+
+def point_matches_interior_floor(world_point, volume_obj, tolerance):
+    local = volume_obj.matrix_world.inverted_safe() @ world_point
+    half = 0.5 + tolerance
+    return (
+        -half <= local.x <= half
+        and -half <= local.y <= half
+        and local.z <= half + tolerance
     )
 
 
@@ -129,6 +151,30 @@ def build_target_bvh(context, targets):
     return (BVHTree.FromPolygons(vertices, polygons, all_triangles=False), face_sources) if polygons else (None, [])
 
 
+def calculate_adaptive_search_distance(targets, volumes, minimum):
+    points = []
+    for obj in [*targets, *volumes]:
+        points.extend(obj.matrix_world @ Vector(corner) for corner in obj.bound_box)
+    if not points:
+        return minimum
+    bounds_min = Vector(tuple(min(point[axis] for point in points) for axis in range(3)))
+    bounds_max = Vector(tuple(max(point[axis] for point in points) for axis in range(3)))
+    return max(minimum, (bounds_max - bounds_min).length)
+
+
+def is_top_exposed_surface(world_center, target_bvh, settings, search_distance):
+    if target_bvh is None:
+        return False
+    epsilon = max(settings.volume_tolerance, 0.0005)
+    origin = world_center + Vector((0.0, 0.0, epsilon * 4.0))
+    hit_location = target_bvh.ray_cast(
+        origin,
+        Vector((0.0, 0.0, 1.0)),
+        search_distance,
+    )[0]
+    return hit_location is None
+
+
 def volume_sample_points(volume):
     points = []
     for x in (-0.35, 0.0, 0.35):
@@ -138,36 +184,71 @@ def volume_sample_points(volume):
     return points
 
 
-def is_visible_from_volume(world_center, volume_samples, target_bvh, settings):
+def polygon_sample_points(obj, polygon):
+    world_vertices = [obj.matrix_world @ obj.data.vertices[index].co for index in polygon.vertices]
+    center = obj.matrix_world @ polygon.center
+    points = [center]
+    for vertex in world_vertices:
+        points.append(center.lerp(vertex, 0.65))
+    if len(world_vertices) >= 4:
+        for index, vertex in enumerate(world_vertices):
+            next_vertex = world_vertices[(index + 1) % len(world_vertices)]
+            edge_midpoint = (vertex + next_vertex) * 0.5
+            points.append(center.lerp(edge_midpoint, 0.65))
+    return points
+
+
+def is_visible_from_volume(surface_points, volume_samples, target_bvh, settings, search_distance):
     if target_bvh is None:
         return False
-    max_distance = max(settings.surface_probe_distance, 0.0001)
+    max_distance = search_distance
     surface_epsilon = max(settings.volume_tolerance, 0.0005)
-    for origin in volume_samples:
-        direction = world_center - origin
-        distance = direction.length
-        if distance <= surface_epsilon:
-            return True
-        if distance > max_distance:
-            continue
-        direction.normalize()
-        hit = target_bvh.ray_cast(origin, direction, distance + surface_epsilon)
-        hit_location = hit[0]
-        if hit_location is not None and (hit_location - world_center).length <= surface_epsilon * 4.0:
-            return True
+    for surface_point in surface_points:
+        for origin in volume_samples:
+            direction = surface_point - origin
+            distance = direction.length
+            if distance <= surface_epsilon:
+                return True
+            if distance > max_distance:
+                continue
+            direction.normalize()
+            hit = target_bvh.ray_cast(origin, direction, distance + surface_epsilon)
+            hit_location = hit[0]
+            if hit_location is not None and (hit_location - surface_point).length <= surface_epsilon * 4.0:
+                return True
     return False
 
 
-def classify_polygon(obj, polygon, volumes, volume_samples, settings, target_bvh):
+def classify_polygon(obj, polygon, volumes, volume_samples, settings, target_bvh, search_distance):
     world_center = obj.matrix_world @ polygon.center
     normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
     world_normal = (normal_matrix @ polygon.normal).normalized()
     if world_normal.z >= settings.upward_normal_threshold:
-        return CLASS_INTERIOR
+        if is_floor_object(obj):
+            return CLASS_INTERIOR
+        if is_top_exposed_surface(world_center, target_bvh, settings, search_distance):
+            return CLASS_INTERIOR
+        return (
+            CLASS_INTERIOR
+            if any(
+                point_matches_interior_floor(point, volume, settings.volume_tolerance)
+                for volume in volumes
+                for point in polygon_sample_points(obj, polygon)
+            )
+            else CLASS_EXTERIOR
+        )
+    if world_normal.z <= -settings.upward_normal_threshold:
+        return CLASS_EXTERIOR
 
     if any(point_inside_volume(world_center, volume, settings.volume_tolerance) for volume in volumes):
         return CLASS_INTERIOR
-    if is_visible_from_volume(world_center, volume_samples, target_bvh, settings):
+    if is_visible_from_volume(
+        polygon_sample_points(obj, polygon),
+        volume_samples,
+        target_bvh,
+        settings,
+        search_distance,
+    ):
         return CLASS_INTERIOR
     return CLASS_EXTERIOR
 
@@ -183,6 +264,25 @@ def assign_selected_faces(context, class_value):
         for face in bm.faces:
             if face.select:
                 face[layer] = class_value
+                changed += 1
+        bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
+    return changed
+
+
+def overwrite_class_from_selection(context, class_value, fallback_value):
+    changed = 0
+    for obj in context.objects_in_mode_unique_data:
+        if not is_mesh_object(obj):
+            continue
+        bm = bmesh.from_edit_mesh(obj.data)
+        bm.faces.ensure_lookup_table()
+        layer = bm.faces.layers.int.get(CLASS_ATTRIBUTE) or bm.faces.layers.int.new(CLASS_ATTRIBUTE)
+        for face in bm.faces:
+            next_value = class_value if face.select else (
+                fallback_value if face[layer] == class_value else face[layer]
+            )
+            if face[layer] != next_value:
+                face[layer] = next_value
                 changed += 1
         bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
     return changed
@@ -369,6 +469,11 @@ class Bento_OT_classify(Operator):
 
         settings = context.scene.bento_surface_splitter
         target_bvh, _ = build_target_bvh(context, targets)
+        search_distance = calculate_adaptive_search_distance(
+            targets,
+            volumes,
+            max(settings.surface_probe_distance, 0.0001),
+        )
         volume_samples = [
             point
             for volume in volumes
@@ -387,6 +492,7 @@ class Bento_OT_classify(Operator):
                     volume_samples,
                     settings,
                     target_bvh,
+                    search_distance,
                 )
                 attribute.data[polygon.index].value = value
                 if value == CLASS_INTERIOR:
@@ -433,6 +539,28 @@ class Bento_OT_assign_class(Operator):
             return {"CANCELLED"}
         count = assign_selected_faces(context, int(self.class_value))
         self.report({"INFO"}, f"已修改 {count} 个面")
+        return {"FINISHED"}
+
+
+class Bento_OT_overwrite_class(Operator):
+    bl_idname = "bento.overwrite_surface_class"
+    bl_label = "用当前选择覆盖分类"
+    bl_options = {"REGISTER", "UNDO"}
+
+    class_value: EnumProperty(
+        items=[("1", "室内", ""), ("2", "外墙", "")],
+        default="1",
+    )
+
+    def execute(self, context):
+        if context.mode != "EDIT_MESH":
+            self.report({"ERROR"}, "请先进入编辑模式并选择面")
+            return {"CANCELLED"}
+        class_value = int(self.class_value)
+        fallback_value = CLASS_EXTERIOR if class_value == CLASS_INTERIOR else CLASS_INTERIOR
+        count = overwrite_class_from_selection(context, class_value, fallback_value)
+        label = "室内" if class_value == CLASS_INTERIOR else "外墙"
+        self.report({"INFO"}, f"已用当前选择覆盖{label}分类，修改 {count} 个面")
         return {"FINISHED"}
 
 
@@ -557,30 +685,30 @@ class Bento_PT_surface_splitter(Panel):
         box.operator("bento.classify_building_surfaces", icon="MOD_BUILD")
 
         box = layout.box()
-        box.label(text="4. 检查分类")
+        box.label(text="4. 查看分类结果")
         row = box.row(align=True)
         op = row.operator("bento.select_surface_class", text="选择室内面")
         op.class_value = "1"
         op = row.operator("bento.select_surface_class", text="选择外墙面")
         op.class_value = "2"
-        row = box.row(align=True)
-        op = row.operator("bento.select_surface_class", text="选择未分类")
-        op.class_value = "0"
-        op = row.operator("bento.select_surface_class", text="选择排除面")
-        op.class_value = "3"
-        row = box.row(align=True)
-        op = row.operator("bento.assign_surface_class", text="选中面 → 室内")
-        op.class_value = "1"
-        op = row.operator("bento.assign_surface_class", text="选中面 → 外墙")
-        op.class_value = "2"
-        row = box.row(align=True)
-        op = row.operator("bento.assign_surface_class", text="选中面 → 排除")
-        op.class_value = "3"
-        op = row.operator("bento.assign_surface_class", text="清除分类")
-        op.class_value = "0"
+        box.label(text="这里只读取面上的分类标记", icon="INFO")
 
         box = layout.box()
-        box.label(text="5. 分离与导出")
+        box.label(text="5. 手动修补")
+        box.label(text="先增减面选择，再保存当前选中面", icon="INFO")
+        row = box.row(align=True)
+        op = row.operator("bento.assign_surface_class", text="保留选中面为室内")
+        op.class_value = "1"
+        op = row.operator("bento.assign_surface_class", text="保留选中面为外墙")
+        op.class_value = "2"
+        row = box.row(align=True)
+        op = row.operator("bento.overwrite_surface_class", text="覆盖保存为室内")
+        op.class_value = "1"
+        op = row.operator("bento.overwrite_surface_class", text="覆盖保存为外墙")
+        op.class_value = "2"
+
+        box = layout.box()
+        box.label(text="6. 生成分类对象与导出")
         box.prop(settings, "interior_name")
         box.prop(settings, "exterior_name")
         box.prop(settings, "roof_name")
@@ -598,6 +726,7 @@ CLASSES = (
     Bento_OT_classify,
     Bento_OT_select_class,
     Bento_OT_assign_class,
+    Bento_OT_overwrite_class,
     Bento_OT_split_surfaces,
     Bento_OT_export_fbx,
     Bento_PT_surface_splitter,

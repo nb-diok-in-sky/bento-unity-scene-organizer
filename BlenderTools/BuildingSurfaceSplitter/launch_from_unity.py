@@ -1,5 +1,6 @@
 import bpy
 import os
+import socket
 import sys
 
 
@@ -25,13 +26,30 @@ def enable_addon(addon_path):
         module.register()
 
 
+def find_available_debug_port(start=6688, attempts=32):
+    for port in range(start, start + attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            try:
+                probe.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    return None
+
+
 def start_local_debug_bridge():
     try:
+        port = find_available_debug_port()
+        if port is None:
+            raise RuntimeError("no available local debug port")
+        os.environ["BLD_REMOTE_MCP_PORT"] = str(port)
         bpy.ops.preferences.addon_enable(module="bld_remote_mcp")
         import bld_remote
         if not bld_remote.is_mcp_service_up():
+            bld_remote.set_mcp_service_port(port)
             bld_remote.start_mcp_service()
-        print(f"[Bento] Blender debug bridge listening on {bld_remote.get_mcp_service_port()}")
+        bpy.context.scene["bento_debug_port"] = port
+        print(f"[Bento] Blender debug bridge listening on {port}")
     except Exception as exception:
         print(f"[Bento] Blender debug bridge unavailable: {exception}")
 
