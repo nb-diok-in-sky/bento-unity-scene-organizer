@@ -94,6 +94,101 @@ def point_inside_volume_horizontal(world_point, volume_obj, tolerance):
     return -half <= local.x <= half and -half <= local.y <= half
 
 
+def point_inside_volume_vertical_span(world_point, volume_obj, tolerance):
+    bounds_min, bounds_max = volume_world_bounds(volume_obj)
+    return bounds_min.z - tolerance <= world_point.z <= bounds_max.z + tolerance
+
+
+def point_inside_volume_expanded(world_point, volume_obj, horizontal_margin, vertical_margin):
+    bounds_min, bounds_max = volume_world_bounds(volume_obj)
+    return (
+        bounds_min.x - horizontal_margin <= world_point.x <= bounds_max.x + horizontal_margin
+        and bounds_min.y - horizontal_margin <= world_point.y <= bounds_max.y + horizontal_margin
+        and bounds_min.z - vertical_margin <= world_point.z <= bounds_max.z + vertical_margin
+    )
+
+
+def volume_world_bounds(volume_obj):
+    corners = [volume_obj.matrix_world @ Vector(corner) for corner in volume_obj.bound_box]
+    bounds_min = Vector(tuple(min(point[axis] for point in corners) for axis in range(3)))
+    bounds_max = Vector(tuple(max(point[axis] for point in corners) for axis in range(3)))
+    return bounds_min, bounds_max
+
+
+def build_interior_footprints(targets, volumes, settings):
+    footprints = []
+    tolerance = max(settings.volume_tolerance, 0.0005)
+    volume_bounds = [volume_world_bounds(volume) for volume in volumes]
+    for obj in targets:
+        if not is_floor_object(obj):
+            continue
+        normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
+        for polygon in obj.data.polygons:
+            normal = (normal_matrix @ polygon.normal).normalized()
+            if normal.z < settings.upward_normal_threshold:
+                continue
+            vertices = [
+                obj.matrix_world @ obj.data.vertices[index].co
+                for index in polygon.vertices
+            ]
+            if len(vertices) < 3:
+                continue
+            min_x = min(vertex.x for vertex in vertices)
+            max_x = max(vertex.x for vertex in vertices)
+            min_y = min(vertex.y for vertex in vertices)
+            max_y = max(vertex.y for vertex in vertices)
+            floor_z = max(vertex.z for vertex in vertices)
+            matching_heights = [
+                bounds_max.z
+                for bounds_min, bounds_max in volume_bounds
+                if max_x >= bounds_min.x - tolerance
+                and min_x <= bounds_max.x + tolerance
+                and max_y >= bounds_min.y - tolerance
+                and min_y <= bounds_max.y + tolerance
+            ]
+            ceiling_z = max(matching_heights, default=floor_z + 10.0)
+            footprints.append((min_x, max_x, min_y, max_y, floor_z, ceiling_z))
+    return footprints
+
+
+def face_touches_floor_footprint(points, footprint, horizontal_margin, vertical_margin):
+    min_x, max_x, min_y, max_y, floor_z, ceiling_z = footprint
+    face_min = Vector(tuple(min(point[axis] for point in points) for axis in range(3)))
+    face_max = Vector(tuple(max(point[axis] for point in points) for axis in range(3)))
+    return (
+        face_max.x >= min_x - horizontal_margin
+        and face_min.x <= max_x + horizontal_margin
+        and face_max.y >= min_y - horizontal_margin
+        and face_min.y <= max_y + horizontal_margin
+        and face_max.z >= floor_z - vertical_margin
+        and face_min.z <= ceiling_z + vertical_margin
+    )
+
+
+def point_inside_floor_footprint(point, footprint, horizontal_margin, vertical_margin):
+    min_x, max_x, min_y, max_y, floor_z, ceiling_z = footprint
+    return (
+        min_x - horizontal_margin <= point.x <= max_x + horizontal_margin
+        and min_y - horizontal_margin <= point.y <= max_y + horizontal_margin
+        and floor_z - vertical_margin <= point.z <= ceiling_z + vertical_margin
+    )
+
+
+def normal_faces_footprint_interior(center, normal, footprint):
+    min_x, max_x, min_y, max_y, _floor_z, _ceiling_z = footprint
+    footprint_center = Vector(((min_x + max_x) * 0.5, (min_y + max_y) * 0.5, center.z))
+    direction = footprint_center - center
+    direction.z = 0.0
+    if direction.length_squared <= 1e-12:
+        return True
+    direction.normalize()
+    horizontal_normal = Vector((normal.x, normal.y, 0.0))
+    if horizontal_normal.length_squared <= 1e-12:
+        return False
+    horizontal_normal.normalize()
+    return horizontal_normal.dot(direction) >= 0.15
+
+
 def point_matches_interior_floor(world_point, volume_obj, tolerance):
     local = volume_obj.matrix_world.inverted_safe() @ world_point
     half = 0.5 + tolerance
@@ -273,6 +368,130 @@ def propagate_interior_to_coplanar_faces(obj, class_values, volumes, settings):
             if lateral.length <= radius + seed_radius + tolerance * 12.0 and z_gap <= tolerance * 12.0:
                 class_values[index] = CLASS_INTERIOR
                 break
+
+
+def classify_faces_near_interior_volume(obj, class_values, volumes, footprints, settings):
+    if not volumes and not footprints:
+        return
+    tolerance = max(settings.volume_tolerance, 0.0005)
+    normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
+    for polygon in obj.data.polygons:
+        index = polygon.index
+        if class_values[index] != CLASS_EXTERIOR:
+            continue
+        normal = (normal_matrix @ polygon.normal).normalized()
+        if abs(normal.z) >= settings.upward_normal_threshold:
+            continue
+        points = polygon_sample_points(obj, polygon)
+        radius = max(
+            ((point - (obj.matrix_world @ polygon.center)).length for point in points),
+            default=0.0,
+        )
+        horizontal_margin = max(tolerance * 8.0, min(radius * 0.2, 0.25))
+        if any(
+            face_touches_interior_footprint(points, volume, horizontal_margin, tolerance * 4.0)
+            for volume in volumes
+        ):
+            class_values[index] = CLASS_INTERIOR
+
+
+def supplement_low_faces_from_floor_footprints(
+    obj, class_values, footprints, settings
+):
+    if not footprints:
+        return
+    tolerance = max(settings.volume_tolerance, 0.0005)
+    normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
+    geometry = [
+        polygon_world_geometry(obj, polygon, normal_matrix)
+        for polygon in obj.data.polygons
+    ]
+    seeds = [
+        index
+        for index, value in enumerate(class_values)
+        if value == CLASS_INTERIOR
+        and abs(geometry[index][1].z) < settings.upward_normal_threshold
+    ]
+    for polygon in obj.data.polygons:
+        index = polygon.index
+        if class_values[index] != CLASS_EXTERIOR:
+            continue
+        center, normal, radius, min_z, max_z = geometry[index]
+        if abs(normal.z) >= settings.upward_normal_threshold:
+            continue
+        matching_footprints = [
+            footprint
+            for footprint in footprints
+            if face_touches_floor_footprint(
+                polygon_sample_points(obj, polygon),
+                footprint,
+                max(tolerance * 8.0, min(radius * 0.08, 0.08)),
+                tolerance * 8.0,
+            )
+            and max_z <= footprint[4] + max(0.6, radius * 1.5)
+            and normal_faces_footprint_interior(center, normal, footprint)
+        ]
+        if not matching_footprints:
+            continue
+        for seed_index in seeds:
+            seed_center, seed_normal, seed_radius, seed_min_z, seed_max_z = geometry[seed_index]
+            if seed_normal.dot(normal) < 0.94:
+                continue
+            plane_distance = abs((center - seed_center).dot(seed_normal))
+            if plane_distance > max(0.12, tolerance * 12.0):
+                continue
+            horizontal_delta = center - seed_center
+            horizontal_delta.z = 0.0
+            if horizontal_delta.length <= radius + seed_radius + 0.35:
+                class_values[index] = CLASS_INTERIOR
+                break
+
+
+def face_touches_interior_footprint(points, volume, horizontal_margin, vertical_margin):
+    bounds_min, bounds_max = volume_world_bounds(volume)
+    face_min = Vector(tuple(min(point[axis] for point in points) for axis in range(3)))
+    face_max = Vector(tuple(max(point[axis] for point in points) for axis in range(3)))
+    return (
+        face_max.x >= bounds_min.x - horizontal_margin
+        and face_min.x <= bounds_max.x + horizontal_margin
+        and face_max.y >= bounds_min.y - horizontal_margin
+        and face_min.y <= bounds_max.y + horizontal_margin
+        and face_max.z >= bounds_min.z - vertical_margin
+        and face_min.z <= bounds_max.z + vertical_margin
+    )
+
+
+def classify_horizontal_faces_by_interior_footprint(
+    obj, class_values, volumes, footprints, settings
+):
+    if not volumes and not footprints:
+        return
+    tolerance = max(settings.volume_tolerance, 0.0005)
+    normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
+    for polygon in obj.data.polygons:
+        index = polygon.index
+        if class_values[index] != CLASS_EXTERIOR:
+            continue
+        normal = (normal_matrix @ polygon.normal).normalized()
+        if normal.z < settings.upward_normal_threshold:
+            continue
+        points = polygon_sample_points(obj, polygon)
+        inside_count = sum(
+            1
+            for point in points
+            if any(
+                point_inside_volume_horizontal(point, volume, tolerance * 4.0)
+                and point_inside_volume_vertical_span(point, volume, tolerance * 8.0)
+                for volume in volumes
+            ) or any(
+                point_inside_floor_footprint(
+                    point, footprint, tolerance * 4.0, tolerance * 8.0
+                )
+                for footprint in footprints
+            )
+        )
+        if inside_count >= max(1, (len(points) + 2) // 3):
+            class_values[index] = CLASS_INTERIOR
 
 
 def polygon_sample_points(obj, polygon):
@@ -589,6 +808,7 @@ class Bento_OT_classify(Operator):
             for volume in volumes
             for point in volume_sample_points(volume)
         ]
+        footprints = build_interior_footprints(targets, volumes, settings)
         interior = exterior = 0
         for obj in targets:
             if context.mode != "OBJECT":
@@ -608,6 +828,15 @@ class Bento_OT_classify(Operator):
                 class_values.append(value)
             propagate_interior_to_adjacent_faces(obj, class_values, settings)
             propagate_interior_to_coplanar_faces(obj, class_values, volumes, settings)
+            classify_faces_near_interior_volume(
+                obj, class_values, volumes, footprints, settings
+            )
+            supplement_low_faces_from_floor_footprints(
+                obj, class_values, footprints, settings
+            )
+            classify_horizontal_faces_by_interior_footprint(
+                obj, class_values, volumes, footprints, settings
+            )
             for polygon, value in zip(obj.data.polygons, class_values):
                 attribute.data[polygon.index].value = value
                 if value == CLASS_INTERIOR:
