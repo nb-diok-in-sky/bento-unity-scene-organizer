@@ -20,6 +20,8 @@ from mathutils.bvhtree import BVHTree
 
 CLASS_ATTRIBUTE = "bento_surface_class"
 RULE_ATTRIBUTE = "bento_surface_rule"
+CUT_FACE_ATTRIBUTE = "bento_horizontal_cut_face"
+CUT_PREVIEW_NAME = "Bento_HorizontalCutPreview"
 CLASS_UNCLASSIFIED = 0
 CLASS_INTERIOR = 1
 CLASS_EXTERIOR = 2
@@ -93,6 +95,14 @@ def ensure_rule_attribute(mesh):
         mesh.attributes.remove(attribute)
         attribute = None
     return attribute or mesh.attributes.new(RULE_ATTRIBUTE, "INT", "FACE")
+
+
+def ensure_cut_face_attribute(mesh):
+    attribute = mesh.attributes.get(CUT_FACE_ATTRIBUTE)
+    if attribute and (attribute.domain != "FACE" or attribute.data_type != "INT"):
+        mesh.attributes.remove(attribute)
+        attribute = None
+    return attribute or mesh.attributes.new(CUT_FACE_ATTRIBUTE, "INT", "FACE")
 
 
 def point_inside_volume(world_point, volume_obj, tolerance):
@@ -197,12 +207,35 @@ def polygon_crosses_plane(obj, polygon, axis, value, epsilon):
     return min(coordinates) < value - epsilon and max(coordinates) > value + epsilon
 
 
+def polygon_crosses_segment_xy(obj, polygon, first, second):
+    vertices = [
+        obj.matrix_world @ obj.data.vertices[index].co
+        for index in polygon.vertices
+    ]
+    if not vertices:
+        return False
+    face_min_x = min(vertex.x for vertex in vertices)
+    face_max_x = max(vertex.x for vertex in vertices)
+    face_min_y = min(vertex.y for vertex in vertices)
+    face_max_y = max(vertex.y for vertex in vertices)
+    segment_min_x = min(first.x, second.x)
+    segment_max_x = max(first.x, second.x)
+    segment_min_y = min(first.y, second.y)
+    segment_max_y = max(first.y, second.y)
+    return (
+        face_max_x >= segment_min_x
+        and face_min_x <= segment_max_x
+        and face_max_y >= segment_min_y
+        and face_min_y <= segment_max_y
+    )
+
+
 def is_horizontal_cut_candidate(obj, polygon, footprints, settings, top_z):
     if is_floor_object(obj):
         return False
     normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
     normal = (normal_matrix @ polygon.normal).normalized()
-    horizontal_threshold = cos(radians(settings.horizontal_cut_angle))
+    horizontal_threshold = cos(settings.horizontal_cut_angle)
     if abs(normal.z) < horizontal_threshold:
         return False
     center = obj.matrix_world @ polygon.center
@@ -260,6 +293,121 @@ def point_inside_floor_polygon(point, footprint, margin=0.0):
     if inside:
         return True
     return any((Vector((vertex.x, vertex.y)) - Vector((x, y))).length <= margin for vertex in vertices)
+
+
+def offset_floor_polygon(vertices, expansion):
+    if not vertices:
+        return []
+    center = sum(vertices, Vector()) / len(vertices)
+    result = []
+    for vertex in vertices:
+        direction = Vector((vertex.x - center.x, vertex.y - center.y, 0.0))
+        if direction.length_squared > 1e-12:
+            direction.normalize()
+        result.append(Vector((vertex.x, vertex.y, vertex.z)) + direction * expansion)
+    return result
+
+
+def extract_floor_boundary_segments(targets, settings):
+    segments = []
+    threshold = cos(settings.horizontal_cut_angle)
+    for obj in targets:
+        if not is_floor_object(obj):
+            continue
+        normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
+        edge_use = {}
+        for polygon in obj.data.polygons:
+            normal = (normal_matrix @ polygon.normal).normalized()
+            if normal.z < threshold:
+                continue
+            for edge_key in polygon.edge_keys:
+                edge_use[edge_key] = edge_use.get(edge_key, 0) + 1
+        for edge_key, use_count in edge_use.items():
+            if use_count != 1:
+                continue
+            first, second = (
+                obj.matrix_world @ obj.data.vertices[index].co
+                for index in edge_key
+            )
+            segments.append((first, second))
+    return segments
+
+
+def expand_boundary_segment(first, second, center, expansion):
+    midpoint = (first + second) * 0.5
+    outward = Vector((midpoint.x - center.x, midpoint.y - center.y, 0.0))
+    if outward.length_squared > 1e-12:
+        outward.normalize()
+    return first + outward * expansion, second + outward * expansion
+
+
+def remove_cut_preview():
+    preview = bpy.data.objects.get(CUT_PREVIEW_NAME)
+    if preview is None:
+        return
+    data = preview.data
+    bpy.data.objects.remove(preview, do_unlink=True)
+    if data and data.users == 0:
+        bpy.data.curves.remove(data)
+
+
+def iter_saved_cut_faces(targets):
+    for obj in targets:
+        attribute = obj.data.attributes.get(CUT_FACE_ATTRIBUTE)
+        if attribute is None or len(attribute.data) != len(obj.data.polygons):
+            continue
+        for polygon in obj.data.polygons:
+            if attribute.data[polygon.index].value:
+                yield obj, polygon
+
+
+def create_cut_preview(context, footprints, targets, settings):
+    remove_cut_preview()
+    curve = bpy.data.curves.new(CUT_PREVIEW_NAME, type="CURVE")
+    curve.dimensions = "3D"
+    curve.bevel_depth = 0.012
+    curve.bevel_resolution = 0
+    curve.resolution_u = 1
+    candidate_levels = {}
+    for obj, polygon in iter_saved_cut_faces(targets):
+        center = obj.matrix_world @ polygon.center
+        candidate_levels.setdefault(round(center.z, 5), []).append((obj, polygon))
+
+    boundary_segments = extract_floor_boundary_segments(targets, settings)
+    all_boundary_points = [
+        point for segment in boundary_segments for point in segment
+    ]
+    center = (
+        sum(all_boundary_points, Vector()) / len(all_boundary_points)
+        if all_boundary_points else Vector()
+    )
+    preview_count = 0
+    for level, candidates in candidate_levels.items():
+        for first, second in boundary_segments:
+            expanded_first, expanded_second = expand_boundary_segment(
+                first, second, center, settings.horizontal_cut_expansion
+            )
+            if not any(
+                polygon_crosses_segment_xy(obj, polygon, expanded_first, expanded_second)
+                for obj, polygon in candidates
+            ):
+                continue
+            spline = curve.splines.new("POLY")
+            spline.points.add(1)
+            spline.points[0].co = (
+                expanded_first.x, expanded_first.y, level, 1.0
+            )
+            spline.points[1].co = (
+                expanded_second.x, expanded_second.y, level, 1.0
+            )
+            preview_count += 1
+    preview = bpy.data.objects.new(CUT_PREVIEW_NAME, curve)
+    context.scene.collection.objects.link(preview)
+    preview["bento_cut_preview"] = True
+    preview.display_type = "WIRE"
+    preview.color = (1.0, 0.05, 0.05, 1.0)
+    preview.show_in_front = True
+    return preview, preview_count
 
 
 def normal_faces_footprint_interior(center, normal, footprint):
@@ -1408,6 +1556,116 @@ class Bento_OT_preview_horizontal_cuts(Operator):
         return {"FINISHED"}
 
 
+class Bento_OT_save_horizontal_cut_faces(Operator):
+    bl_idname = "bento.save_horizontal_cut_faces"
+    bl_label = "保存当前选择为待切分面"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "EDIT_MESH":
+            self.report({"ERROR"}, "请先进入网格编辑模式并选择面")
+            return {"CANCELLED"}
+        count = 0
+        for obj in context.objects_in_mode_unique_data:
+            bm = bmesh.from_edit_mesh(obj.data)
+            bm.faces.ensure_lookup_table()
+            layer = bm.faces.layers.int.get(CUT_FACE_ATTRIBUTE)
+            if layer is None:
+                layer = bm.faces.layers.int.new(CUT_FACE_ATTRIBUTE)
+            for face in bm.faces:
+                face[layer] = 1 if face.select else 0
+                if face.select:
+                    count += 1
+            bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
+        remove_cut_preview()
+        self.report({"INFO"}, f"已保存 {count} 个待切分面")
+        return {"FINISHED"}
+
+
+class Bento_OT_select_saved_horizontal_cut_faces(Operator):
+    bl_idname = "bento.select_saved_horizontal_cut_faces"
+    bl_label = "重新选择已保存面"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        targets = iter_target_objects(context)
+        bpy.ops.object.select_all(action="DESELECT")
+        saved_objects = [
+            obj for obj in targets
+            if obj.data.attributes.get(CUT_FACE_ATTRIBUTE) is not None
+        ]
+        if not saved_objects:
+            self.report({"WARNING"}, "没有已保存的待切分面")
+            return {"CANCELLED"}
+        for obj in saved_objects:
+            obj.hide_set(False)
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="EDIT")
+        count = 0
+        for obj in context.objects_in_mode_unique_data:
+            bm = bmesh.from_edit_mesh(obj.data)
+            bm.faces.ensure_lookup_table()
+            layer = bm.faces.layers.int.get(CUT_FACE_ATTRIBUTE)
+            for face in bm.faces:
+                face.select = layer is not None and bool(face[layer])
+                if face.select:
+                    count += 1
+            bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
+        self.report({"INFO"}, f"已选择 {count} 个保存面")
+        return {"FINISHED"}
+
+
+class Bento_OT_create_cut_preview(Operator):
+    bl_idname = "bento.create_horizontal_cut_preview"
+    bl_label = "生成切线预览"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        targets = iter_target_objects(context)
+        settings = context.scene.bento_surface_splitter
+        footprints = build_interior_footprints(targets, iter_volumes(context), settings)
+        if not footprints:
+            self.report({"ERROR"}, "没有可用地板轮廓，请确认地板对象名称")
+            return {"CANCELLED"}
+        preview, level_count = create_cut_preview(
+            context, footprints, targets, settings
+        )
+        bpy.ops.object.select_all(action="DESELECT")
+        preview.select_set(True)
+        context.view_layer.objects.active = preview
+        self.report({"INFO"}, f"已生成 {level_count} 层切线预览")
+        return {"FINISHED"}
+
+
+class Bento_OT_clear_cut_preview(Operator):
+    bl_idname = "bento.clear_horizontal_cut_preview"
+    bl_label = "清除切线预览"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        remove_cut_preview()
+        return {"FINISHED"}
+
+
+class Bento_OT_toggle_cut_preview(Operator):
+    bl_idname = "bento.toggle_horizontal_cut_preview"
+    bl_label = "显示或隐藏切线预览"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        preview = bpy.data.objects.get(CUT_PREVIEW_NAME)
+        if preview is None:
+            self.report({"WARNING"}, "尚未生成切线预览")
+            return {"CANCELLED"}
+        preview.hide_set(not preview.hide_get())
+        return {"FINISHED"}
+
+
 class Bento_OT_apply_horizontal_cuts(Operator):
     bl_idname = "bento.apply_horizontal_floor_cuts"
     bl_label = "按地板轮廓切分横面"
@@ -1425,24 +1683,19 @@ class Bento_OT_apply_horizontal_cuts(Operator):
         planes = floor_boundary_planes(
             footprints, settings.horizontal_cut_expansion
         )
-        top_z = max(
-            (obj.matrix_world @ Vector(corner)).z
-            for obj in targets
-            for corner in obj.bound_box
-        )
         cut_count = 0
+        changed_objects = []
         for obj in targets:
             mesh = obj.data
+            before_counts = (len(mesh.vertices), len(mesh.edges), len(mesh.polygons))
             bm = bmesh.new()
             bm.from_mesh(mesh)
             bm.faces.ensure_lookup_table()
+            cut_layer = bm.faces.layers.int.get(CUT_FACE_ATTRIBUTE)
             candidate_faces = {
                 face
                 for face in bm.faces
-                if face.index < len(mesh.polygons)
-                and is_horizontal_cut_candidate(
-                    obj, mesh.polygons[face.index], footprints, settings, top_z
-                )
+                if cut_layer is not None and bool(face[cut_layer])
             }
             if not candidate_faces:
                 bm.free()
@@ -1455,15 +1708,23 @@ class Bento_OT_apply_horizontal_cuts(Operator):
                 plane_world_no = Vector((1.0, 0.0, 0.0)) if axis == "X" else Vector((0.0, 1.0, 0.0))
                 plane_co = inverse @ plane_world_co
                 plane_no = (normal_inverse @ plane_world_no).normalized()
-                geometry = {
-                    element
+                crossing_faces = {
+                    face
                     for face in candidate_faces
                     if face.is_valid
+                    and min((obj.matrix_world @ vertex.co)[0 if axis == "X" else 1]
+                            for vertex in face.verts) < value - epsilon
+                    and max((obj.matrix_world @ vertex.co)[0 if axis == "X" else 1]
+                            for vertex in face.verts) > value + epsilon
+                }
+                geometry = {
+                    element
+                    for face in crossing_faces
                     for element in (*face.verts, *face.edges, face)
                 }
                 if not geometry:
                     continue
-                result = bmesh.ops.bisect_plane(
+                bmesh.ops.bisect_plane(
                     bm,
                     geom=list(geometry),
                     plane_co=plane_co,
@@ -1472,22 +1733,26 @@ class Bento_OT_apply_horizontal_cuts(Operator):
                     clear_inner=False,
                     clear_outer=False,
                 )
-                new_edges = [
-                    element
-                    for element in result.get("geom_cut", ())
-                    if isinstance(element, bmesh.types.BMEdge)
-                ]
-                cut_count += len(new_edges)
-                candidate_faces = {
-                    face
-                    for face in bm.faces
-                    if any(abs((obj.matrix_world @ vertex.co)[0 if axis == "X" else 1] - value) <= epsilon * 4.0
-                           for vertex in face.verts)
-                }
             bm.to_mesh(mesh)
             bm.free()
             mesh.update()
-        self.report({"INFO"}, f"已生成 {cut_count} 条轮廓切边；未修改分类")
+            after_counts = (len(mesh.vertices), len(mesh.edges), len(mesh.polygons))
+            increase = sum(max(0, after - before) for before, after in zip(before_counts, after_counts))
+            if increase:
+                cut_count += increase
+                changed_objects.append(obj)
+        remove_cut_preview()
+        if changed_objects:
+            bpy.ops.object.select_all(action="DESELECT")
+            for obj in changed_objects:
+                obj.select_set(True)
+                context.view_layer.objects.active = obj
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.select_all(action="DESELECT")
+        if not changed_objects:
+            self.report({"ERROR"}, "切分未产生任何网格变化，请调整外扩或候选面")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"切分已产生 {cut_count} 项网格拓扑变化；未修改分类")
         return {"FINISHED"}
 
 
@@ -1672,8 +1937,15 @@ class Bento_PT_surface_splitter(Panel):
         box.prop(settings, "horizontal_cut_expansion")
         box.prop(settings, "horizontal_cut_top_exclusion")
         row = box.row(align=True)
-        row.operator("bento.preview_horizontal_floor_cuts", text="选择待切分横面")
-        row.operator("bento.apply_horizontal_floor_cuts", text="按地板轮廓切分")
+        row.operator("bento.preview_horizontal_floor_cuts", text="选择自动候选")
+        row.operator("bento.save_horizontal_cut_faces", text="保存当前选择")
+        row = box.row(align=True)
+        row.operator("bento.select_saved_horizontal_cut_faces", text="重新选择已保存面")
+        row.operator("bento.create_horizontal_cut_preview", text="生成切线预览")
+        row = box.row(align=True)
+        row.operator("bento.toggle_horizontal_cut_preview", text="隐藏/显示预览")
+        row.operator("bento.clear_horizontal_cut_preview", text="清除预览")
+        box.operator("bento.apply_horizontal_floor_cuts", text="按已保存面执行切分")
 
         box = layout.box()
         box.label(text="4. 自动分类")
@@ -1760,6 +2032,11 @@ CLASSES = (
     Bento_OT_select_class,
     Bento_OT_debug_rule,
     Bento_OT_preview_horizontal_cuts,
+    Bento_OT_save_horizontal_cut_faces,
+    Bento_OT_select_saved_horizontal_cut_faces,
+    Bento_OT_create_cut_preview,
+    Bento_OT_clear_cut_preview,
+    Bento_OT_toggle_cut_preview,
     Bento_OT_apply_horizontal_cuts,
     Bento_OT_assign_class,
     Bento_OT_overwrite_class,
