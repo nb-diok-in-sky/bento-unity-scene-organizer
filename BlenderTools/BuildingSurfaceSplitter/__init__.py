@@ -11,6 +11,7 @@ bl_info = {
 import bpy
 import bmesh
 import os
+from math import cos, radians
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty, StringProperty
 from bpy.types import Operator, Panel, PropertyGroup
 from mathutils import Vector
@@ -18,10 +19,17 @@ from mathutils.bvhtree import BVHTree
 
 
 CLASS_ATTRIBUTE = "bento_surface_class"
+RULE_ATTRIBUTE = "bento_surface_rule"
 CLASS_UNCLASSIFIED = 0
 CLASS_INTERIOR = 1
 CLASS_EXTERIOR = 2
 CLASS_EXCLUDED = 3
+RULE_BASE = 1
+RULE_ADJACENT = 2
+RULE_COPLANAR = 3
+RULE_VOLUME_EDGE = 4
+RULE_FLOOR_LOW = 5
+RULE_HORIZONTAL = 6
 FLOOR_NAME_HINTS = ("地板", "地面", "floor", "ground")
 
 
@@ -77,6 +85,14 @@ def ensure_attribute(mesh):
         mesh.attributes.remove(attribute)
         attribute = None
     return attribute or mesh.attributes.new(CLASS_ATTRIBUTE, "INT", "FACE")
+
+
+def ensure_rule_attribute(mesh):
+    attribute = mesh.attributes.get(RULE_ATTRIBUTE)
+    if attribute and (attribute.domain != "FACE" or attribute.data_type != "INT"):
+        mesh.attributes.remove(attribute)
+        attribute = None
+    return attribute or mesh.attributes.new(RULE_ATTRIBUTE, "INT", "FACE")
 
 
 def point_inside_volume(world_point, volume_obj, tolerance):
@@ -148,12 +164,61 @@ def build_interior_footprints(targets, volumes, settings):
                 and min_y <= bounds_max.y + tolerance
             ]
             ceiling_z = max(matching_heights, default=floor_z + 10.0)
-            footprints.append((min_x, max_x, min_y, max_y, floor_z, ceiling_z))
+            footprints.append(
+                (min_x, max_x, min_y, max_y, floor_z, ceiling_z, vertices)
+            )
     return footprints
 
 
+def floor_boundary_planes(footprints, expansion=0.0):
+    planes = []
+    for footprint in footprints:
+        min_x, max_x, min_y, max_y = footprint[:4]
+        planes.extend((
+            ("X", min_x - expansion),
+            ("X", max_x + expansion),
+            ("Y", min_y - expansion),
+            ("Y", max_y + expansion),
+        ))
+    unique = []
+    for axis, value in planes:
+        if not any(existing_axis == axis and abs(existing_value - value) <= 1e-5
+                   for existing_axis, existing_value in unique):
+            unique.append((axis, value))
+    return unique
+
+
+def polygon_crosses_plane(obj, polygon, axis, value, epsilon):
+    axis_index = 0 if axis == "X" else 1
+    coordinates = [
+        (obj.matrix_world @ obj.data.vertices[index].co)[axis_index]
+        for index in polygon.vertices
+    ]
+    return min(coordinates) < value - epsilon and max(coordinates) > value + epsilon
+
+
+def is_horizontal_cut_candidate(obj, polygon, footprints, settings, top_z):
+    if is_floor_object(obj):
+        return False
+    normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
+    normal = (normal_matrix @ polygon.normal).normalized()
+    horizontal_threshold = cos(radians(settings.horizontal_cut_angle))
+    if abs(normal.z) < horizontal_threshold:
+        return False
+    center = obj.matrix_world @ polygon.center
+    if center.z >= top_z - settings.horizontal_cut_top_exclusion:
+        return False
+    epsilon = max(settings.volume_tolerance * 4.0, 0.0005)
+    return any(
+        polygon_crosses_plane(obj, polygon, axis, value, epsilon)
+        for axis, value in floor_boundary_planes(
+            footprints, settings.horizontal_cut_expansion
+        )
+    )
+
+
 def face_touches_floor_footprint(points, footprint, horizontal_margin, vertical_margin):
-    min_x, max_x, min_y, max_y, floor_z, ceiling_z = footprint
+    min_x, max_x, min_y, max_y, floor_z, ceiling_z = footprint[:6]
     face_min = Vector(tuple(min(point[axis] for point in points) for axis in range(3)))
     face_max = Vector(tuple(max(point[axis] for point in points) for axis in range(3)))
     return (
@@ -167,7 +232,7 @@ def face_touches_floor_footprint(points, footprint, horizontal_margin, vertical_
 
 
 def point_inside_floor_footprint(point, footprint, horizontal_margin, vertical_margin):
-    min_x, max_x, min_y, max_y, floor_z, ceiling_z = footprint
+    min_x, max_x, min_y, max_y, floor_z, ceiling_z = footprint[:6]
     return (
         min_x - horizontal_margin <= point.x <= max_x + horizontal_margin
         and min_y - horizontal_margin <= point.y <= max_y + horizontal_margin
@@ -175,8 +240,30 @@ def point_inside_floor_footprint(point, footprint, horizontal_margin, vertical_m
     )
 
 
+def point_inside_floor_polygon(point, footprint, margin=0.0):
+    vertices = footprint[6]
+    if len(vertices) < 3:
+        return False
+    inside = False
+    x, y = point.x, point.y
+    previous = vertices[-1]
+    for current in vertices:
+        if ((current.y > y) != (previous.y > y)):
+            crossing_x = (
+                (previous.x - current.x) * (y - current.y)
+                / max(previous.y - current.y, 1e-12)
+                + current.x
+            )
+            if x < crossing_x:
+                inside = not inside
+        previous = current
+    if inside:
+        return True
+    return any((Vector((vertex.x, vertex.y)) - Vector((x, y))).length <= margin for vertex in vertices)
+
+
 def normal_faces_footprint_interior(center, normal, footprint):
-    min_x, max_x, min_y, max_y, _floor_z, _ceiling_z = footprint
+    min_x, max_x, min_y, max_y, _floor_z, _ceiling_z = footprint[:6]
     footprint_center = Vector(((min_x + max_x) * 0.5, (min_y + max_y) * 0.5, center.z))
     direction = footprint_center - center
     direction.z = 0.0
@@ -188,6 +275,51 @@ def normal_faces_footprint_interior(center, normal, footprint):
         return False
     horizontal_normal.normalize()
     return horizontal_normal.dot(direction) >= 0.15
+
+
+def is_outer_parallel_frame_candidate(
+    obj, polygon, normal, footprints, settings
+):
+    if abs(normal.z) >= settings.upward_normal_threshold:
+        return False
+    center = obj.matrix_world @ polygon.center
+    points = polygon_sample_points(obj, polygon)
+    tolerance = max(settings.volume_tolerance, 0.0005)
+    for footprint in footprints:
+        if not face_touches_floor_footprint(
+            points, footprint, 0.3, tolerance * 8.0
+        ):
+            continue
+        min_x, max_x, min_y, max_y = footprint[:4]
+        distances = {
+            "MIN_X": abs(center.x - min_x),
+            "MAX_X": abs(center.x - max_x),
+            "MIN_Y": abs(center.y - min_y),
+            "MAX_Y": abs(center.y - max_y),
+        }
+        boundary = min(distances, key=distances.get)
+        if distances[boundary] > 0.35:
+            continue
+        wall_axis = Vector((1.0, 0.0, 0.0)) if boundary.endswith("X") else Vector((0.0, 1.0, 0.0))
+        horizontal_normal = Vector((normal.x, normal.y, 0.0))
+        if horizontal_normal.length_squared <= 1e-12:
+            continue
+        horizontal_normal.normalize()
+        if abs(horizontal_normal.dot(wall_axis)) > 0.35:
+            continue
+        outward = {
+            "MIN_X": Vector((-1.0, 0.0, 0.0)),
+            "MAX_X": Vector((1.0, 0.0, 0.0)),
+            "MIN_Y": Vector((0.0, -1.0, 0.0)),
+            "MAX_Y": Vector((0.0, 1.0, 0.0)),
+        }[boundary]
+        outside_point = center + outward * 0.2
+        inside_point = center - outward * 0.2
+        outside_in_floor = point_inside_floor_polygon(outside_point, footprint, tolerance)
+        inside_in_floor = point_inside_floor_polygon(inside_point, footprint, tolerance)
+        if inside_in_floor and not outside_in_floor:
+            return True
+    return False
 
 
 def point_matches_interior_floor(world_point, volume_obj, tolerance):
@@ -280,7 +412,7 @@ def volume_sample_points(volume):
     return points
 
 
-def propagate_interior_to_adjacent_faces(obj, class_values, settings):
+def propagate_interior_to_adjacent_faces(obj, class_values, rule_values, settings):
     mesh = obj.data
     edge_faces = {}
     for polygon in mesh.polygons:
@@ -314,6 +446,7 @@ def propagate_interior_to_adjacent_faces(obj, class_values, settings):
                 for neighbor in neighbors
             ):
                 class_values[index] = CLASS_INTERIOR
+                rule_values[index] = RULE_ADJACENT
                 changed = True
 
 
@@ -327,7 +460,7 @@ def polygon_world_geometry(obj, polygon, normal_matrix):
     return center, normal, radius, min_z, max_z
 
 
-def propagate_interior_to_coplanar_faces(obj, class_values, volumes, settings):
+def propagate_interior_to_coplanar_faces(obj, class_values, rule_values, volumes, settings):
     normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
     geometry = [
         polygon_world_geometry(obj, polygon, normal_matrix)
@@ -368,10 +501,13 @@ def propagate_interior_to_coplanar_faces(obj, class_values, volumes, settings):
             z_gap = max(0.0, min_z - seed_max_z, seed_min_z - max_z)
             if lateral.length <= radius + seed_radius + tolerance * 12.0 and z_gap <= tolerance * 12.0:
                 class_values[index] = CLASS_INTERIOR
+                rule_values[index] = RULE_COPLANAR
                 break
 
 
-def classify_faces_near_interior_volume(obj, class_values, volumes, footprints, settings):
+def classify_faces_near_interior_volume(
+    obj, class_values, rule_values, volumes, footprints, settings
+):
     if not volumes and not footprints:
         return
     tolerance = max(settings.volume_tolerance, 0.0005)
@@ -394,10 +530,11 @@ def classify_faces_near_interior_volume(obj, class_values, volumes, footprints, 
             for volume in volumes
         ):
             class_values[index] = CLASS_INTERIOR
+            rule_values[index] = RULE_VOLUME_EDGE
 
 
 def supplement_low_faces_from_floor_footprints(
-    obj, class_values, footprints, settings
+    obj, class_values, rule_values, footprints, settings
 ):
     if not footprints:
         return
@@ -445,7 +582,41 @@ def supplement_low_faces_from_floor_footprints(
             horizontal_delta.z = 0.0
             if horizontal_delta.length <= radius + seed_radius + 0.35:
                 class_values[index] = CLASS_INTERIOR
+                rule_values[index] = RULE_FLOOR_LOW
                 break
+
+
+def supplement_inward_floor_boundary_faces(
+    obj, class_values, rule_values, footprints, settings
+):
+    if not footprints:
+        return
+    normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
+    tolerance = max(settings.volume_tolerance, 0.0005)
+    for polygon in obj.data.polygons:
+        index = polygon.index
+        if class_values[index] != CLASS_EXTERIOR:
+            continue
+        normal = (normal_matrix @ polygon.normal).normalized()
+        if abs(normal.z) >= settings.upward_normal_threshold:
+            continue
+        center = obj.matrix_world @ polygon.center
+        points = polygon_sample_points(obj, polygon)
+        if any(
+            face_touches_floor_footprint(
+                points, footprint, tolerance * 8.0, tolerance * 8.0
+            )
+            and normal_faces_footprint_interior(center, normal, footprint)
+            and min(
+                abs(center.x - footprint[0]),
+                abs(center.x - footprint[1]),
+                abs(center.y - footprint[2]),
+                abs(center.y - footprint[3]),
+            ) <= 0.18
+            for footprint in footprints
+        ):
+            class_values[index] = CLASS_INTERIOR
+            rule_values[index] = RULE_FLOOR_LOW
 
 
 def face_touches_interior_footprint(points, volume, horizontal_margin, vertical_margin):
@@ -463,7 +634,7 @@ def face_touches_interior_footprint(points, volume, horizontal_margin, vertical_
 
 
 def classify_horizontal_faces_by_interior_footprint(
-    obj, class_values, volumes, footprints, settings
+    obj, class_values, rule_values, volumes, footprints, settings
 ):
     if not volumes and not footprints:
         return
@@ -485,14 +656,16 @@ def classify_horizontal_faces_by_interior_footprint(
                 and point_inside_volume_vertical_span(point, volume, tolerance * 8.0)
                 for volume in volumes
             ) or any(
-                point_inside_floor_footprint(
-                    point, footprint, tolerance * 4.0, tolerance * 8.0
-                )
+                footprint[4] - tolerance * 8.0
+                <= point.z
+                <= footprint[5] + tolerance * 8.0
+                and point_inside_floor_polygon(point, footprint, tolerance * 4.0)
                 for footprint in footprints
             )
         )
         if inside_count >= max(1, (len(points) + 2) // 3):
             class_values[index] = CLASS_INTERIOR
+            rule_values[index] = RULE_HORIZONTAL
 
 
 def polygon_sample_points(obj, polygon):
@@ -509,7 +682,10 @@ def polygon_sample_points(obj, polygon):
     return points
 
 
-def is_visible_from_volume(surface_points, volume_samples, target_bvh, settings, search_distance):
+def is_visible_from_volume(
+    surface_points, volume_samples, target_bvh, settings, search_distance,
+    surface_normal=None, facing_mode="ANY"
+):
     if target_bvh is None:
         return False
     max_distance = search_distance
@@ -523,9 +699,40 @@ def is_visible_from_volume(surface_points, volume_samples, target_bvh, settings,
             if distance > max_distance:
                 continue
             direction.normalize()
+            if surface_normal is not None and facing_mode != "ANY":
+                faces_origin = surface_normal.dot(-direction) > 0.0
+                if facing_mode == "TOWARD_ORIGIN" and not faces_origin:
+                    continue
+                if facing_mode == "AWAY_FROM_ORIGIN" and faces_origin:
+                    continue
             hit = target_bvh.ray_cast(origin, direction, distance + surface_epsilon)
             hit_location = hit[0]
             if hit_location is not None and (hit_location - surface_point).length <= surface_epsilon * 4.0:
+                return True
+    return False
+
+
+def is_visible_from_volume_with_facing(
+    surface_points, surface_normal, volume_samples, target_bvh, settings, search_distance,
+    require_facing
+):
+    if target_bvh is None:
+        return False
+    surface_epsilon = max(settings.volume_tolerance, 0.0005)
+    for surface_point in surface_points:
+        for origin in volume_samples:
+            direction = surface_point - origin
+            distance = direction.length
+            if distance <= surface_epsilon or distance > search_distance:
+                continue
+            direction.normalize()
+            hit_location = target_bvh.ray_cast(
+                origin, direction, distance + surface_epsilon
+            )[0]
+            if hit_location is None or (hit_location - surface_point).length > surface_epsilon * 4.0:
+                continue
+            faces_origin = surface_normal.dot(origin - surface_point) > 0.0
+            if faces_origin == require_facing:
                 return True
     return False
 
@@ -710,6 +917,136 @@ def resolve_export_path(settings):
     return ""
 
 
+def count_rule_hits(context):
+    counts = {value: 0 for value in range(RULE_BASE, RULE_HORIZONTAL + 1)}
+    for obj in iter_target_objects(context):
+        attribute = obj.data.attributes.get(RULE_ATTRIBUTE)
+        if attribute is None or len(attribute.data) != len(obj.data.polygons):
+            continue
+        for item in attribute.data:
+            if item.value in counts:
+                counts[item.value] += 1
+    return counts
+
+
+def evaluate_debug_rule(
+    rule_value, obj, polygon, volumes, volume_samples, footprints,
+    settings, target_bvh, search_distance
+):
+    center = obj.matrix_world @ polygon.center
+    normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
+    normal = (normal_matrix @ polygon.normal).normalized()
+    points = polygon_sample_points(obj, polygon)
+    tolerance = max(settings.volume_tolerance, 0.0005)
+
+    if rule_value == "UPWARD":
+        return normal.z >= settings.upward_normal_threshold
+    if rule_value == "FLOOR_OBJECT":
+        return is_floor_object(obj) and normal.z >= settings.upward_normal_threshold
+    if rule_value == "CENTER_IN_VOLUME":
+        return any(
+            point_inside_volume(center, volume, settings.volume_tolerance)
+            for volume in volumes
+        )
+    if rule_value == "RAY_VISIBLE":
+        return (
+            abs(normal.z) < settings.upward_normal_threshold
+            and is_visible_from_volume(
+                points, volume_samples, target_bvh, settings, search_distance
+            )
+        )
+    if rule_value == "RAY_TOWARD_ORIGIN":
+        return (
+            abs(normal.z) < settings.upward_normal_threshold
+            and is_visible_from_volume(
+                points,
+                volume_samples,
+                target_bvh,
+                settings,
+                search_distance,
+                normal,
+                "TOWARD_ORIGIN",
+            )
+        )
+    if rule_value == "RAY_AWAY_FROM_ORIGIN":
+        return (
+            abs(normal.z) < settings.upward_normal_threshold
+            and is_visible_from_volume(
+                points,
+                volume_samples,
+                target_bvh,
+                settings,
+                search_distance,
+                normal,
+                "AWAY_FROM_ORIGIN",
+            )
+        )
+    if rule_value == "OUTER_FRAME":
+        return is_outer_parallel_frame_candidate(
+            obj, polygon, normal, footprints, settings
+        )
+    if rule_value == "RAY_MINUS_OUTER_FRAME":
+        return (
+            abs(normal.z) < settings.upward_normal_threshold
+            and is_visible_from_volume(
+                points,
+                volume_samples,
+                target_bvh,
+                settings,
+                search_distance,
+                normal,
+                "TOWARD_ORIGIN",
+            )
+            and not is_outer_parallel_frame_candidate(
+                obj, polygon, normal, footprints, settings
+            )
+        )
+    if rule_value == "VOLUME_EDGE":
+        if abs(normal.z) >= settings.upward_normal_threshold:
+            return False
+        radius = max(((point - center).length for point in points), default=0.0)
+        margin = max(tolerance * 8.0, min(radius * 0.2, 0.25))
+        return any(
+            face_touches_interior_footprint(points, volume, margin, tolerance * 4.0)
+            for volume in volumes
+        )
+    if rule_value == "FLOOR_FOOTPRINT_SIDE":
+        if abs(normal.z) >= settings.upward_normal_threshold:
+            return False
+        return any(
+            face_touches_floor_footprint(points, footprint, tolerance * 8.0, tolerance * 8.0)
+            and normal_faces_footprint_interior(center, normal, footprint)
+            and min(
+                abs(center.x - footprint[0]),
+                abs(center.x - footprint[1]),
+                abs(center.y - footprint[2]),
+                abs(center.y - footprint[3]),
+            ) <= 0.18
+            for footprint in footprints
+        )
+    if rule_value == "HORIZONTAL_FOOTPRINT":
+        if normal.z < settings.upward_normal_threshold:
+            return False
+        inside_count = sum(
+            1
+            for point in points
+            if any(
+                point_inside_volume_horizontal(point, volume, tolerance * 4.0)
+                and point_inside_volume_vertical_span(point, volume, tolerance * 8.0)
+                for volume in volumes
+            )
+            or any(
+                footprint[4] - tolerance * 8.0
+                <= point.z
+                <= footprint[5] + tolerance * 8.0
+                and point_inside_floor_polygon(point, footprint, tolerance * 4.0)
+                for footprint in footprints
+            )
+        )
+        return inside_count >= max(1, (len(points) + 2) // 3)
+    return False
+
+
 class BentoSurfaceSplitterSettings(PropertyGroup):
     target_scope: EnumProperty(
         name="处理范围",
@@ -766,6 +1103,32 @@ class BentoSurfaceSplitterSettings(PropertyGroup):
         name="覆盖原 FBX",
         description="导出到源 FBX 路径；默认关闭并生成新文件",
         default=False,
+    )
+    show_debug_rules: BoolProperty(name="显示分类规则调试", default=False)
+    horizontal_cut_angle: FloatProperty(
+        name="横面角度容差",
+        description="面法线与世界竖直方向的最大夹角",
+        default=radians(12.0),
+        min=0.0,
+        max=radians(45.0),
+        subtype="ANGLE",
+        unit="ROTATION",
+    )
+    horizontal_cut_expansion: FloatProperty(
+        name="地板轮廓外扩",
+        description="切线相对地板边界向外移动的世界空间距离",
+        default=0.15,
+        min=0.0,
+        soft_max=1.0,
+        unit="LENGTH",
+    )
+    horizontal_cut_top_exclusion: FloatProperty(
+        name="顶部排除高度",
+        description="距离建筑最高点该高度以内的横面不参与切分",
+        default=0.15,
+        min=0.0,
+        soft_max=2.0,
+        unit="LENGTH",
     )
     export_path: StringProperty(name="FBX 输出", subtype="FILE_PATH")
     export_after_split: BoolProperty(name="分离后立即导出", default=False)
@@ -871,7 +1234,9 @@ class Bento_OT_classify(Operator):
             if context.mode != "OBJECT":
                 bpy.ops.object.mode_set(mode="OBJECT")
             attribute = ensure_attribute(obj.data)
+            rule_attribute = ensure_rule_attribute(obj.data)
             class_values = []
+            rule_values = []
             for polygon in obj.data.polygons:
                 value = classify_polygon(
                     obj,
@@ -883,19 +1248,28 @@ class Bento_OT_classify(Operator):
                     search_distance,
                 )
                 class_values.append(value)
-            propagate_interior_to_adjacent_faces(obj, class_values, settings)
-            propagate_interior_to_coplanar_faces(obj, class_values, volumes, settings)
+                rule_values.append(RULE_BASE if value == CLASS_INTERIOR else 0)
+            propagate_interior_to_adjacent_faces(obj, class_values, rule_values, settings)
+            propagate_interior_to_coplanar_faces(
+                obj, class_values, rule_values, volumes, settings
+            )
             classify_faces_near_interior_volume(
-                obj, class_values, volumes, footprints, settings
+                obj, class_values, rule_values, volumes, footprints, settings
             )
             supplement_low_faces_from_floor_footprints(
-                obj, class_values, footprints, settings
+                obj, class_values, rule_values, footprints, settings
+            )
+            supplement_inward_floor_boundary_faces(
+                obj, class_values, rule_values, footprints, settings
             )
             classify_horizontal_faces_by_interior_footprint(
-                obj, class_values, volumes, footprints, settings
+                obj, class_values, rule_values, volumes, footprints, settings
             )
-            for polygon, value in zip(obj.data.polygons, class_values):
+            for polygon, value, rule_value in zip(
+                obj.data.polygons, class_values, rule_values
+            ):
                 attribute.data[polygon.index].value = value
+                rule_attribute.data[polygon.index].value = rule_value
                 if value == CLASS_INTERIOR:
                     interior += 1
                 else:
@@ -921,6 +1295,199 @@ class Bento_OT_select_class(Operator):
         except RuntimeError as exception:
             self.report({"ERROR"}, str(exception))
             return {"CANCELLED"}
+        return {"FINISHED"}
+
+
+class Bento_OT_debug_rule(Operator):
+    bl_idname = "bento.debug_surface_rule"
+    bl_label = "独立计算规则"
+    bl_options = {"REGISTER", "UNDO"}
+
+    rule_name: EnumProperty(
+        items=[
+            ("UPWARD", "全部向上面", ""),
+            ("FLOOR_OBJECT", "地板对象向上面", ""),
+            ("CENTER_IN_VOLUME", "面中心位于室内盒", ""),
+            ("RAY_VISIBLE", "仅室内射线可见", ""),
+            ("RAY_TOWARD_ORIGIN", "射线面朝室内起点", ""),
+            ("RAY_AWAY_FROM_ORIGIN", "射线面背离室内起点", ""),
+            ("OUTER_FRAME", "外侧平行门框候选", ""),
+            ("RAY_MINUS_OUTER_FRAME", "射线减去外侧门框", ""),
+            ("VOLUME_EDGE", "仅室内盒贴边", ""),
+            ("FLOOR_FOOTPRINT_SIDE", "仅地板轮廓竖面", ""),
+            ("HORIZONTAL_FOOTPRINT", "仅横面轮廓", ""),
+        ],
+        default="RAY_VISIBLE",
+    )
+
+    def execute(self, context):
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        targets = iter_target_objects(context)
+        volumes = iter_volumes(context)
+        if not targets:
+            self.report({"ERROR"}, "没有可调试的网格对象")
+            return {"CANCELLED"}
+        settings = context.scene.bento_surface_splitter
+        target_bvh, _ = build_target_bvh(context, targets)
+        search_distance = calculate_adaptive_search_distance(
+            targets, volumes, max(settings.surface_probe_distance, 0.0001)
+        )
+        volume_samples = [
+            point for volume in volumes for point in volume_sample_points(volume)
+        ]
+        footprints = build_interior_footprints(targets, volumes, settings)
+        bpy.ops.object.select_all(action="DESELECT")
+        selected_count = 0
+        for obj in targets:
+            obj.hide_set(False)
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="EDIT")
+        for obj in context.objects_in_mode_unique_data:
+            bm = bmesh.from_edit_mesh(obj.data)
+            bm.faces.ensure_lookup_table()
+            bm.faces.layers.int.get(CLASS_ATTRIBUTE)
+            for face in bm.faces:
+                polygon = obj.data.polygons[face.index]
+                face.select = evaluate_debug_rule(
+                    self.rule_name,
+                    obj,
+                    polygon,
+                    volumes,
+                    volume_samples,
+                    footprints,
+                    settings,
+                    target_bvh,
+                    search_distance,
+                )
+                if face.select:
+                    selected_count += 1
+            bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
+        self.report({"INFO"}, f"独立规则命中 {selected_count} 面")
+        return {"FINISHED"}
+
+
+class Bento_OT_preview_horizontal_cuts(Operator):
+    bl_idname = "bento.preview_horizontal_floor_cuts"
+    bl_label = "选择待切分横面"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        targets = iter_target_objects(context)
+        settings = context.scene.bento_surface_splitter
+        footprints = build_interior_footprints(targets, iter_volumes(context), settings)
+        if not footprints:
+            self.report({"ERROR"}, "没有可用地板轮廓，请确认地板对象名称")
+            return {"CANCELLED"}
+        top_z = max(
+            (obj.matrix_world @ Vector(corner)).z
+            for obj in targets
+            for corner in obj.bound_box
+        )
+        bpy.ops.object.select_all(action="DESELECT")
+        for obj in targets:
+            obj.hide_set(False)
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="EDIT")
+        count = 0
+        for obj in context.objects_in_mode_unique_data:
+            bm = bmesh.from_edit_mesh(obj.data)
+            bm.faces.ensure_lookup_table()
+            for face in bm.faces:
+                face.select = is_horizontal_cut_candidate(
+                    obj, obj.data.polygons[face.index], footprints, settings, top_z
+                )
+                if face.select:
+                    count += 1
+            bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
+        self.report({"INFO"}, f"找到 {count} 个待切分横面")
+        return {"FINISHED"}
+
+
+class Bento_OT_apply_horizontal_cuts(Operator):
+    bl_idname = "bento.apply_horizontal_floor_cuts"
+    bl_label = "按地板轮廓切分横面"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        targets = iter_target_objects(context)
+        settings = context.scene.bento_surface_splitter
+        footprints = build_interior_footprints(targets, iter_volumes(context), settings)
+        if not footprints:
+            self.report({"ERROR"}, "没有可用地板轮廓，请确认地板对象名称")
+            return {"CANCELLED"}
+        planes = floor_boundary_planes(
+            footprints, settings.horizontal_cut_expansion
+        )
+        top_z = max(
+            (obj.matrix_world @ Vector(corner)).z
+            for obj in targets
+            for corner in obj.bound_box
+        )
+        cut_count = 0
+        for obj in targets:
+            mesh = obj.data
+            bm = bmesh.new()
+            bm.from_mesh(mesh)
+            bm.faces.ensure_lookup_table()
+            candidate_faces = {
+                face
+                for face in bm.faces
+                if face.index < len(mesh.polygons)
+                and is_horizontal_cut_candidate(
+                    obj, mesh.polygons[face.index], footprints, settings, top_z
+                )
+            }
+            if not candidate_faces:
+                bm.free()
+                continue
+            inverse = obj.matrix_world.inverted_safe()
+            normal_inverse = obj.matrix_world.to_3x3().transposed()
+            epsilon = max(settings.volume_tolerance * 4.0, 0.0005)
+            for axis, value in planes:
+                plane_world_co = Vector((value, 0.0, 0.0)) if axis == "X" else Vector((0.0, value, 0.0))
+                plane_world_no = Vector((1.0, 0.0, 0.0)) if axis == "X" else Vector((0.0, 1.0, 0.0))
+                plane_co = inverse @ plane_world_co
+                plane_no = (normal_inverse @ plane_world_no).normalized()
+                geometry = {
+                    element
+                    for face in candidate_faces
+                    if face.is_valid
+                    for element in (*face.verts, *face.edges, face)
+                }
+                if not geometry:
+                    continue
+                result = bmesh.ops.bisect_plane(
+                    bm,
+                    geom=list(geometry),
+                    plane_co=plane_co,
+                    plane_no=plane_no,
+                    dist=epsilon,
+                    clear_inner=False,
+                    clear_outer=False,
+                )
+                new_edges = [
+                    element
+                    for element in result.get("geom_cut", ())
+                    if isinstance(element, bmesh.types.BMEdge)
+                ]
+                cut_count += len(new_edges)
+                candidate_faces = {
+                    face
+                    for face in bm.faces
+                    if any(abs((obj.matrix_world @ vertex.co)[0 if axis == "X" else 1] - value) <= epsilon * 4.0
+                           for vertex in face.verts)
+                }
+            bm.to_mesh(mesh)
+            bm.free()
+            mesh.update()
+        self.report({"INFO"}, f"已生成 {cut_count} 条轮廓切边；未修改分类")
         return {"FINISHED"}
 
 
@@ -1100,14 +1667,23 @@ class Bento_PT_surface_splitter(Panel):
         box.operator("bento.exclude_and_hide_surfaces", text="排除并隐藏选中对象", icon="HIDE_ON")
 
         box = layout.box()
-        box.label(text="3. 自动分类")
+        box.label(text="3. 网格预处理（不修改分类）")
+        box.prop(settings, "horizontal_cut_angle")
+        box.prop(settings, "horizontal_cut_expansion")
+        box.prop(settings, "horizontal_cut_top_exclusion")
+        row = box.row(align=True)
+        row.operator("bento.preview_horizontal_floor_cuts", text="选择待切分横面")
+        row.operator("bento.apply_horizontal_floor_cuts", text="按地板轮廓切分")
+
+        box = layout.box()
+        box.label(text="4. 自动分类")
         box.prop(settings, "upward_normal_threshold")
         box.prop(settings, "surface_probe_distance")
         box.prop(settings, "volume_tolerance")
         box.operator("bento.classify_building_surfaces", icon="MOD_BUILD")
 
         box = layout.box()
-        box.label(text="4. 查看分类结果")
+        box.label(text="5. 查看分类结果")
         row = box.row(align=True)
         op = row.operator("bento.select_surface_class", text="选择室内面")
         op.class_value = "1"
@@ -1116,7 +1692,7 @@ class Bento_PT_surface_splitter(Panel):
         box.label(text="这里只读取面上的分类标记", icon="INFO")
 
         box = layout.box()
-        box.label(text="5. 手动修补")
+        box.label(text="6. 手动修补")
         box.label(text="先增减面选择，再保存当前选中面", icon="INFO")
         row = box.row(align=True)
         op = row.operator("bento.assign_surface_class", text="保留选中面为室内")
@@ -1130,7 +1706,7 @@ class Bento_PT_surface_splitter(Panel):
         op.class_value = "2"
 
         box = layout.box()
-        box.label(text="6. 生成分类对象与导出")
+        box.label(text="7. 生成分类对象与导出")
         box.prop(settings, "interior_name")
         box.prop(settings, "exterior_name")
         box.prop(settings, "roof_name")
@@ -1147,6 +1723,32 @@ class Bento_PT_surface_splitter(Panel):
         box.prop(settings, "export_after_split")
         box.operator("bento.export_building_fbx", icon="EXPORT")
 
+        debug_box = layout.box()
+        debug_box.prop(
+            settings,
+            "show_debug_rules",
+            text="分类规则调试",
+            icon="TRIA_DOWN" if settings.show_debug_rules else "TRIA_RIGHT",
+            emboss=False,
+        )
+        if settings.show_debug_rules:
+            debug_box.label(text="每个按钮均从原始几何独立重算")
+            for rule_name, label in (
+                ("UPWARD", "全部向上面"),
+                ("FLOOR_OBJECT", "仅地板对象向上面"),
+                ("CENTER_IN_VOLUME", "仅面中心位于室内盒"),
+                ("RAY_VISIBLE", "射线命中（忽略法线）"),
+                ("RAY_TOWARD_ORIGIN", "射线命中且面朝室内"),
+                ("RAY_AWAY_FROM_ORIGIN", "射线命中且面背离室内"),
+                ("OUTER_FRAME", "仅外侧平行门框候选"),
+                ("RAY_MINUS_OUTER_FRAME", "射线室内减去外侧门框"),
+                ("VOLUME_EDGE", "仅室内盒贴边"),
+                ("FLOOR_FOOTPRINT_SIDE", "仅地板轮廓竖面"),
+                ("HORIZONTAL_FOOTPRINT", "仅横面轮廓"),
+            ):
+                op = debug_box.operator("bento.debug_surface_rule", text=label)
+                op.rule_name = rule_name
+
 
 CLASSES = (
     BentoSurfaceSplitterSettings,
@@ -1156,6 +1758,9 @@ CLASSES = (
     Bento_OT_exclude_and_hide,
     Bento_OT_classify,
     Bento_OT_select_class,
+    Bento_OT_debug_rule,
+    Bento_OT_preview_horizontal_cuts,
+    Bento_OT_apply_horizontal_cuts,
     Bento_OT_assign_class,
     Bento_OT_overwrite_class,
     Bento_OT_split_surfaces,
