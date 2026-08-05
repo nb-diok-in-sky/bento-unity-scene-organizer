@@ -179,9 +179,100 @@ def volume_sample_points(volume):
     points = []
     for x in (-0.35, 0.0, 0.35):
         for y in (-0.35, 0.0, 0.35):
-            for z in (-0.3, 0.0, 0.3):
+            for z in (-0.48, -0.25, 0.0, 0.25, 0.48):
                 points.append(volume.matrix_world @ Vector((x, y, z)))
     return points
+
+
+def propagate_interior_to_adjacent_faces(obj, class_values, settings):
+    mesh = obj.data
+    edge_faces = {}
+    for polygon in mesh.polygons:
+        for edge_key in polygon.edge_keys:
+            edge_faces.setdefault(edge_key, []).append(polygon.index)
+
+    normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
+    world_normals = [
+        (normal_matrix @ polygon.normal).normalized()
+        for polygon in mesh.polygons
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for polygon in mesh.polygons:
+            index = polygon.index
+            if class_values[index] != CLASS_EXTERIOR:
+                continue
+            normal = world_normals[index]
+            if abs(normal.z) >= settings.upward_normal_threshold:
+                continue
+            neighbors = {
+                neighbor
+                for edge_key in polygon.edge_keys
+                for neighbor in edge_faces.get(edge_key, ())
+                if neighbor != index
+            }
+            if any(
+                class_values[neighbor] == CLASS_INTERIOR
+                and world_normals[neighbor].dot(normal) >= 0.92
+                for neighbor in neighbors
+            ):
+                class_values[index] = CLASS_INTERIOR
+                changed = True
+
+
+def polygon_world_geometry(obj, polygon, normal_matrix):
+    vertices = [obj.matrix_world @ obj.data.vertices[index].co for index in polygon.vertices]
+    center = obj.matrix_world @ polygon.center
+    normal = (normal_matrix @ polygon.normal).normalized()
+    radius = max(((vertex - center).length for vertex in vertices), default=0.0)
+    min_z = min((vertex.z for vertex in vertices), default=center.z)
+    max_z = max((vertex.z for vertex in vertices), default=center.z)
+    return center, normal, radius, min_z, max_z
+
+
+def propagate_interior_to_coplanar_faces(obj, class_values, volumes, settings):
+    normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
+    geometry = [
+        polygon_world_geometry(obj, polygon, normal_matrix)
+        for polygon in obj.data.polygons
+    ]
+    interior_seeds = [
+        index
+        for index, value in enumerate(class_values)
+        if value == CLASS_INTERIOR
+        and abs(geometry[index][1].z) < settings.upward_normal_threshold
+    ]
+    if not interior_seeds:
+        return
+
+    tolerance = max(settings.volume_tolerance, 0.0005)
+    for index, value in enumerate(class_values):
+        if value != CLASS_EXTERIOR:
+            continue
+        center, normal, radius, min_z, max_z = geometry[index]
+        if abs(normal.z) >= settings.upward_normal_threshold:
+            continue
+        if not any(
+            point_inside_volume(point, volume, tolerance * 4.0)
+            for volume in volumes
+            for point in polygon_sample_points(obj, obj.data.polygons[index])
+        ):
+            continue
+        for seed_index in interior_seeds:
+            seed_center, seed_normal, seed_radius, seed_min_z, seed_max_z = geometry[seed_index]
+            if seed_normal.dot(normal) < 0.965:
+                continue
+            plane_distance = abs((center - seed_center).dot(seed_normal))
+            if plane_distance > max(tolerance * 8.0, (radius + seed_radius) * 0.06):
+                continue
+            lateral = center - seed_center
+            lateral -= seed_normal * lateral.dot(seed_normal)
+            lateral.z = 0.0
+            z_gap = max(0.0, min_z - seed_max_z, seed_min_z - max_z)
+            if lateral.length <= radius + seed_radius + tolerance * 12.0 and z_gap <= tolerance * 12.0:
+                class_values[index] = CLASS_INTERIOR
+                break
 
 
 def polygon_sample_points(obj, polygon):
@@ -452,6 +543,25 @@ class Bento_OT_toggle_excluded(Operator):
         return {"FINISHED"}
 
 
+class Bento_OT_exclude_and_hide(Operator):
+    bl_idname = "bento.exclude_and_hide_surfaces"
+    bl_label = "排除并隐藏选中对象"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        selected = list(context.selected_objects)
+        if not selected:
+            self.report({"WARNING"}, "没有选中对象")
+            return {"CANCELLED"}
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        for obj in selected:
+            obj["bento_surface_excluded"] = True
+            obj.hide_set(True)
+        self.report({"INFO"}, f"已排除并隐藏 {len(selected)} 个对象")
+        return {"FINISHED"}
+
+
 class Bento_OT_classify(Operator):
     bl_idname = "bento.classify_building_surfaces"
     bl_label = "计算内外分类"
@@ -484,6 +594,7 @@ class Bento_OT_classify(Operator):
             if context.mode != "OBJECT":
                 bpy.ops.object.mode_set(mode="OBJECT")
             attribute = ensure_attribute(obj.data)
+            class_values = []
             for polygon in obj.data.polygons:
                 value = classify_polygon(
                     obj,
@@ -494,6 +605,10 @@ class Bento_OT_classify(Operator):
                     target_bvh,
                     search_distance,
                 )
+                class_values.append(value)
+            propagate_interior_to_adjacent_faces(obj, class_values, settings)
+            propagate_interior_to_coplanar_faces(obj, class_values, volumes, settings)
+            for polygon, value in zip(obj.data.polygons, class_values):
                 attribute.data[polygon.index].value = value
                 if value == CLASS_INTERIOR:
                     interior += 1
@@ -676,6 +791,7 @@ class Bento_PT_surface_splitter(Panel):
         op.excluded = True
         op = row.operator("bento.toggle_surface_excluded", text="取消排除")
         op.excluded = False
+        box.operator("bento.exclude_and_hide_surfaces", text="排除并隐藏选中对象", icon="HIDE_ON")
 
         box = layout.box()
         box.label(text="3. 自动分类")
@@ -723,6 +839,7 @@ CLASSES = (
     Bento_OT_create_interior_volume,
     Bento_OT_mark_volume,
     Bento_OT_toggle_excluded,
+    Bento_OT_exclude_and_hide,
     Bento_OT_classify,
     Bento_OT_select_class,
     Bento_OT_assign_class,
