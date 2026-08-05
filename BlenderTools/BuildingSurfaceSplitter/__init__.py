@@ -10,6 +10,7 @@ bl_info = {
 
 import bpy
 import bmesh
+import os
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty, StringProperty
 from bpy.types import Operator, Panel, PropertyGroup
 from mathutils import Vector
@@ -674,6 +675,41 @@ def ensure_parent_empty(context, name):
     return obj
 
 
+def compose_output_name(source_name, category_name, placement, use_separator):
+    separator = "_" if use_separator and source_name and category_name else ""
+    if placement == "PREFIX":
+        return f"{category_name}{separator}{source_name}"
+    return f"{source_name}{separator}{category_name}"
+
+
+def remove_previous_outputs():
+    outputs = [obj for obj in bpy.data.objects if is_output_object(obj)]
+    for obj in outputs:
+        data = obj.data if is_mesh_object(obj) else None
+        bpy.data.objects.remove(obj, do_unlink=True)
+        if data is not None and data.users == 0:
+            bpy.data.meshes.remove(data)
+    for collection in list(bpy.data.collections):
+        if collection.get("bento_surface_output_collection") and not collection.objects and not collection.children:
+            bpy.data.collections.remove(collection)
+
+
+def resolve_export_path(settings):
+    source_path = bpy.path.abspath(settings.source_fbx_path)
+    if settings.overwrite_source_fbx and source_path:
+        return source_path
+    configured = bpy.path.abspath(settings.export_path)
+    if configured:
+        return configured if configured.lower().endswith(".fbx") else configured + ".fbx"
+    if source_path:
+        directory = os.path.dirname(source_path)
+        stem = settings.output_fbx_name.strip() or (
+            os.path.splitext(os.path.basename(source_path))[0] + "_processed"
+        )
+        return os.path.join(directory, stem + ".fbx")
+    return ""
+
+
 class BentoSurfaceSplitterSettings(PropertyGroup):
     target_scope: EnumProperty(
         name="处理范围",
@@ -710,6 +746,27 @@ class BentoSurfaceSplitterSettings(PropertyGroup):
     interior_name: StringProperty(name="室内节点", default="Interior")
     exterior_name: StringProperty(name="外墙节点", default="Exterior")
     roof_name: StringProperty(name="屋顶节点", default="Roof")
+    name_placement: EnumProperty(
+        name="分类名称位置",
+        items=[
+            ("SUFFIX", "后缀", "原名_分类名"),
+            ("PREFIX", "前缀", "分类名_原名"),
+        ],
+        default="SUFFIX",
+    )
+    use_name_separator: BoolProperty(name="名称加入下划线", default=True)
+    replace_source_objects: BoolProperty(
+        name="分离后删除原对象",
+        description="成功生成分类对象后删除分离前的源网格对象",
+        default=True,
+    )
+    source_fbx_path: StringProperty(name="源 FBX", subtype="FILE_PATH")
+    output_fbx_name: StringProperty(name="新 FBX 名称", default="")
+    overwrite_source_fbx: BoolProperty(
+        name="覆盖原 FBX",
+        description="导出到源 FBX 路径；默认关闭并生成新文件",
+        default=False,
+    )
     export_path: StringProperty(name="FBX 输出", subtype="FILE_PATH")
     export_after_split: BoolProperty(name="分离后立即导出", default=False)
 
@@ -922,10 +979,12 @@ class Bento_OT_split_surfaces(Operator):
             self.report({"ERROR"}, "没有可分离的对象")
             return {"CANCELLED"}
 
+        remove_previous_outputs()
         root_collection = bpy.data.collections.get("Bento_BuildingSplit")
         if root_collection is None:
             root_collection = bpy.data.collections.new("Bento_BuildingSplit")
             context.scene.collection.children.link(root_collection)
+        root_collection["bento_surface_output_collection"] = True
 
         interior_parent = ensure_parent_empty(context, settings.interior_name)
         exterior_parent = ensure_parent_empty(context, settings.exterior_name)
@@ -934,26 +993,45 @@ class Bento_OT_split_surfaces(Operator):
             CLASS_INTERIOR: get_or_create_child_collection(root_collection, settings.interior_name),
             CLASS_EXTERIOR: get_or_create_child_collection(root_collection, settings.exterior_name),
         }
+        for collection in collections.values():
+            collection["bento_surface_output_collection"] = True
         for obj in context.scene.objects:
             if not is_excluded_object(obj) or is_volume_object(obj) or obj in {interior_parent, exterior_parent, roof_parent}:
                 continue
             obj.parent = roof_parent
 
         created = 0
+        sources_to_remove = []
         for source in targets:
-            for class_value, suffix, parent in (
+            source_created = 0
+            for class_value, category_name, parent in (
                 (CLASS_INTERIOR, settings.interior_name, interior_parent),
                 (CLASS_EXTERIOR, settings.exterior_name, exterior_parent),
             ):
-                output = copy_polygon_subset(source, class_value, f"{source.name}_{suffix}")
+                output_name = compose_output_name(
+                    source.name,
+                    category_name,
+                    settings.name_placement,
+                    settings.use_name_separator,
+                )
+                output = copy_polygon_subset(source, class_value, output_name)
                 if output is None:
                     continue
                 collections[class_value].objects.link(output)
                 output.parent = parent
                 created += 1
+                source_created += 1
+            if source_created and settings.replace_source_objects:
+                sources_to_remove.append(source)
+        for source in sources_to_remove:
+            mesh = source.data
+            bpy.data.objects.remove(source, do_unlink=True)
+            if mesh.users == 0:
+                bpy.data.meshes.remove(mesh)
         if settings.export_after_split and settings.export_path:
             bpy.ops.bento.export_building_fbx()
-        self.report({"INFO"}, f"已生成 {created} 个分类对象；原始对象未覆盖")
+        action = f"并删除 {len(sources_to_remove)} 个原对象" if sources_to_remove else "，保留原对象"
+        self.report({"INFO"}, f"已生成 {created} 个分类对象{action}")
         return {"FINISHED"}
 
 
@@ -963,12 +1041,11 @@ class Bento_OT_export_fbx(Operator):
 
     def execute(self, context):
         settings = context.scene.bento_surface_splitter
-        path = bpy.path.abspath(settings.export_path)
+        path = resolve_export_path(settings)
         if not path:
             self.report({"ERROR"}, "请设置 FBX 输出路径")
             return {"CANCELLED"}
-        if not path.lower().endswith(".fbx"):
-            path += ".fbx"
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         outputs = [obj for obj in context.scene.objects if is_output_object(obj)]
         if not outputs:
             self.report({"ERROR"}, "没有已分离的输出对象")
@@ -1057,8 +1134,16 @@ class Bento_PT_surface_splitter(Panel):
         box.prop(settings, "interior_name")
         box.prop(settings, "exterior_name")
         box.prop(settings, "roof_name")
+        box.prop(settings, "name_placement")
+        box.prop(settings, "use_name_separator")
+        box.prop(settings, "replace_source_objects")
         box.operator("bento.split_building_surfaces", icon="MOD_EXPLODE")
-        box.prop(settings, "export_path")
+        box.prop(settings, "overwrite_source_fbx")
+        if settings.overwrite_source_fbx:
+            box.prop(settings, "source_fbx_path")
+        else:
+            box.prop(settings, "output_fbx_name")
+            box.prop(settings, "export_path")
         box.prop(settings, "export_after_split")
         box.operator("bento.export_building_fbx", icon="EXPORT")
 

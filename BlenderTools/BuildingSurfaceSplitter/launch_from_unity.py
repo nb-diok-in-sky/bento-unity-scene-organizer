@@ -82,6 +82,8 @@ def main():
         bpy.context.view_layer.objects.active = imported[0]
     settings = bpy.context.scene.bento_surface_splitter
     settings.target_scope = "IMPORTED"
+    settings.source_fbx_path = fbx_path
+    settings.output_fbx_name = os.path.splitext(os.path.basename(fbx_path))[0] + "_processed"
     settings.export_path = os.path.splitext(fbx_path)[0] + "_processed.fbx"
     print(f"[Bento] Imported {len(imported)} objects from {fbx_path}")
 
