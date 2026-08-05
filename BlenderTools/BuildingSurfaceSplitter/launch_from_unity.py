@@ -25,6 +25,17 @@ def enable_addon(addon_path):
         module.register()
 
 
+def start_local_debug_bridge():
+    try:
+        bpy.ops.preferences.addon_enable(module="bld_remote_mcp")
+        import bld_remote
+        if not bld_remote.is_mcp_service_up():
+            bld_remote.start_mcp_service()
+        print(f"[Bento] Blender debug bridge listening on {bld_remote.get_mcp_service_port()}")
+    except Exception as exception:
+        print(f"[Bento] Blender debug bridge unavailable: {exception}")
+
+
 def main():
     args = arguments_after_separator()
     if len(args) < 2:
@@ -33,6 +44,7 @@ def main():
     if not os.path.isfile(fbx_path):
         raise RuntimeError(f"FBX not found: {fbx_path}")
     enable_addon(addon_path)
+    start_local_debug_bridge()
     if bpy.context.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
     bpy.ops.object.select_all(action="SELECT")
@@ -46,10 +58,12 @@ def main():
     bpy.ops.object.select_all(action="DESELECT")
     for obj in imported:
         obj.select_set(True)
+        if obj.type == "MESH":
+            obj["bento_surface_target"] = True
     if imported:
         bpy.context.view_layer.objects.active = imported[0]
     settings = bpy.context.scene.bento_surface_splitter
-    settings.target_scope = "SELECTED"
+    settings.target_scope = "IMPORTED"
     settings.export_path = os.path.splitext(fbx_path)[0] + "_processed.fbx"
     print(f"[Bento] Imported {len(imported)} objects from {fbx_path}")
 

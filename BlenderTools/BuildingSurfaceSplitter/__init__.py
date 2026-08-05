@@ -13,6 +13,7 @@ import bmesh
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty, StringProperty
 from bpy.types import Operator, Panel, PropertyGroup
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
 
 CLASS_ATTRIBUTE = "bento_surface_class"
@@ -38,9 +39,18 @@ def is_output_object(obj):
     return bool(obj and obj.get("bento_surface_output"))
 
 
+def is_target_object(obj):
+    return bool(obj and obj.get("bento_surface_target"))
+
+
 def iter_target_objects(context):
     settings = context.scene.bento_surface_splitter
-    candidates = list(context.selected_objects) if settings.target_scope == "SELECTED" else list(context.scene.objects)
+    if settings.target_scope == "IMPORTED":
+        candidates = [obj for obj in context.scene.objects if is_target_object(obj)]
+    elif settings.target_scope == "SELECTED":
+        candidates = list(context.selected_objects)
+    else:
+        candidates = list(context.scene.objects)
     return [
         obj for obj in candidates
         if is_mesh_object(obj)
@@ -72,21 +82,92 @@ def point_inside_volume(world_point, volume_obj, tolerance):
     )
 
 
-def classify_polygon(obj, polygon, volumes, settings):
+def ray_distance_to_volume(world_origin, world_direction, volume_obj, tolerance):
+    inverse = volume_obj.matrix_world.inverted_safe()
+    local_origin = inverse @ world_origin
+    local_direction = inverse.to_3x3() @ world_direction
+    bounds_min = Vector((-0.5 - tolerance,) * 3)
+    bounds_max = Vector((0.5 + tolerance,) * 3)
+    distance_min = float("-inf")
+    distance_max = float("inf")
+
+    for axis in range(3):
+        origin = local_origin[axis]
+        direction = local_direction[axis]
+        if abs(direction) < 1e-8:
+            if origin < bounds_min[axis] or origin > bounds_max[axis]:
+                return None
+            continue
+        first = (bounds_min[axis] - origin) / direction
+        second = (bounds_max[axis] - origin) / direction
+        if first > second:
+            first, second = second, first
+        distance_min = max(distance_min, first)
+        distance_max = min(distance_max, second)
+        if distance_min > distance_max:
+            return None
+
+    if distance_max < 0.0:
+        return None
+    return max(distance_min, 0.0)
+
+
+def build_target_bvh(context, targets):
+    depsgraph = context.evaluated_depsgraph_get()
+    vertices = []
+    polygons = []
+    face_sources = []
+    for obj in targets:
+        evaluated = obj.evaluated_get(depsgraph)
+        mesh = evaluated.to_mesh()
+        offset = len(vertices)
+        vertices.extend(evaluated.matrix_world @ vertex.co for vertex in mesh.vertices)
+        for polygon in mesh.polygons:
+            polygons.append([offset + vertex_index for vertex_index in polygon.vertices])
+            face_sources.append(obj)
+        evaluated.to_mesh_clear()
+    return (BVHTree.FromPolygons(vertices, polygons, all_triangles=False), face_sources) if polygons else (None, [])
+
+
+def volume_sample_points(volume):
+    points = []
+    for x in (-0.35, 0.0, 0.35):
+        for y in (-0.35, 0.0, 0.35):
+            for z in (-0.3, 0.0, 0.3):
+                points.append(volume.matrix_world @ Vector((x, y, z)))
+    return points
+
+
+def is_visible_from_volume(world_center, volume_samples, target_bvh, settings):
+    if target_bvh is None:
+        return False
+    max_distance = max(settings.surface_probe_distance, 0.0001)
+    surface_epsilon = max(settings.volume_tolerance, 0.0005)
+    for origin in volume_samples:
+        direction = world_center - origin
+        distance = direction.length
+        if distance <= surface_epsilon:
+            return True
+        if distance > max_distance:
+            continue
+        direction.normalize()
+        hit = target_bvh.ray_cast(origin, direction, distance + surface_epsilon)
+        hit_location = hit[0]
+        if hit_location is not None and (hit_location - world_center).length <= surface_epsilon * 4.0:
+            return True
+    return False
+
+
+def classify_polygon(obj, polygon, volumes, volume_samples, settings, target_bvh):
     world_center = obj.matrix_world @ polygon.center
     normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
     world_normal = (normal_matrix @ polygon.normal).normalized()
     if world_normal.z >= settings.upward_normal_threshold:
         return CLASS_INTERIOR
 
-    offset = max(settings.surface_probe_distance, 0.0001)
-    front = world_center + world_normal * offset
-    back = world_center - world_normal * offset
-    if any(
-        point_inside_volume(point, volume, settings.volume_tolerance)
-        for volume in volumes
-        for point in (front, back)
-    ):
+    if any(point_inside_volume(world_center, volume, settings.volume_tolerance) for volume in volumes):
+        return CLASS_INTERIOR
+    if is_visible_from_volume(world_center, volume_samples, target_bvh, settings):
         return CLASS_INTERIOR
     return CLASS_EXTERIOR
 
@@ -96,12 +177,12 @@ def assign_selected_faces(context, class_value):
     for obj in context.objects_in_mode_unique_data:
         if not is_mesh_object(obj):
             continue
-        attribute = ensure_attribute(obj.data)
         bm = bmesh.from_edit_mesh(obj.data)
         bm.faces.ensure_lookup_table()
+        layer = bm.faces.layers.int.get(CLASS_ATTRIBUTE) or bm.faces.layers.int.new(CLASS_ATTRIBUTE)
         for face in bm.faces:
             if face.select:
-                attribute.data[face.index].value = class_value
+                face[layer] = class_value
                 changed += 1
         bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
     return changed
@@ -113,6 +194,7 @@ def select_class_faces(context, class_value):
         raise RuntimeError("没有可检查的网格对象。")
     if context.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
+
     bpy.ops.object.select_all(action="DESELECT")
     for obj in targets:
         obj.select_set(True)
@@ -122,13 +204,11 @@ def select_class_faces(context, class_value):
     bpy.ops.mesh.select_all(action="DESELECT")
 
     for obj in context.objects_in_mode_unique_data:
-        attribute = obj.data.attributes.get(CLASS_ATTRIBUTE)
-        if attribute is None:
-            continue
         bm = bmesh.from_edit_mesh(obj.data)
         bm.faces.ensure_lookup_table()
+        layer = bm.faces.layers.int.get(CLASS_ATTRIBUTE)
         for face in bm.faces:
-            face.select = attribute.data[face.index].value == class_value
+            face.select = layer is not None and face[layer] == class_value
         bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
 
 
@@ -188,10 +268,11 @@ class BentoSurfaceSplitterSettings(PropertyGroup):
     target_scope: EnumProperty(
         name="处理范围",
         items=[
+            ("IMPORTED", "Unity 导入模型", "自动处理本次从 Unity 导入的全部房屋网格，不受当前选择影响"),
             ("SELECTED", "选中对象", "只处理当前选中的网格对象"),
             ("SCENE", "整个场景", "处理场景中未排除的网格对象"),
         ],
-        default="SELECTED",
+        default="IMPORTED",
     )
     upward_normal_threshold: FloatProperty(
         name="向上阈值",
@@ -202,11 +283,11 @@ class BentoSurfaceSplitterSettings(PropertyGroup):
         precision=3,
     )
     surface_probe_distance: FloatProperty(
-        name="表面探测距离",
-        description="沿法线两侧检查室内体积时使用的世界空间距离",
-        default=0.02,
+        name="室内搜索距离",
+        description="从表面沿法线两侧寻找室内体积的最大世界空间距离",
+        default=5.0,
         min=0.0001,
-        soft_max=1.0,
+        soft_max=20.0,
         unit="LENGTH",
     )
     volume_tolerance: FloatProperty(
@@ -287,13 +368,26 @@ class Bento_OT_classify(Operator):
             return {"CANCELLED"}
 
         settings = context.scene.bento_surface_splitter
+        target_bvh, _ = build_target_bvh(context, targets)
+        volume_samples = [
+            point
+            for volume in volumes
+            for point in volume_sample_points(volume)
+        ]
         interior = exterior = 0
         for obj in targets:
             if context.mode != "OBJECT":
                 bpy.ops.object.mode_set(mode="OBJECT")
             attribute = ensure_attribute(obj.data)
             for polygon in obj.data.polygons:
-                value = classify_polygon(obj, polygon, volumes, settings)
+                value = classify_polygon(
+                    obj,
+                    polygon,
+                    volumes,
+                    volume_samples,
+                    settings,
+                    target_bvh,
+                )
                 attribute.data[polygon.index].value = value
                 if value == CLASS_INTERIOR:
                     interior += 1
@@ -445,6 +539,10 @@ class Bento_PT_surface_splitter(Panel):
         box = layout.box()
         box.label(text="2. 处理范围与排除")
         box.prop(settings, "target_scope")
+        targets = iter_target_objects(context)
+        box.label(text=f"当前待处理网格：{len(targets)}")
+        if settings.target_scope == "SELECTED":
+            box.label(text="提示：创建方块会改变当前选择，建议使用“Unity 导入模型”", icon="INFO")
         row = box.row(align=True)
         op = row.operator("bento.toggle_surface_excluded", text="排除选中对象")
         op.excluded = True
