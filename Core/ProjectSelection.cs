@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    static class ProjectSelection
+    public static class ProjectSelection
     {
         public static UnityEngine.Object[] CurrentAssets => Selection.objects
             .Where(asset => asset != null && !string.IsNullOrEmpty(AssetDatabase.GetAssetPath(asset)))

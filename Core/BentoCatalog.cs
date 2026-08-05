@@ -27,7 +27,6 @@ namespace Bento
 
                 Page("资源、模型和预制体", "model_import_workflow", "模型导入", new ModelImportWorkflowTool(), tool => tool.Draw()),
                 Page("资源、模型和预制体", "resource_variant", "资源变体", new ResourceVariantTool(), tool => tool.Draw()),
-                Page("资源、模型和预制体", "obj_to_fbx", "OBJ 转项目 FBX", new ObjToFbxConversionTool(), tool => tool.Draw()),
                 Page("资源、模型和预制体", "blender_building_surface", "Blender 建筑内外墙", new BlenderBuildingSurfaceTool(), tool => tool.Draw()),
                 Page("资源、模型和预制体", "fbx_material_inherit", "FBX 材质继承", new ModelMaterialInheritanceTool(), tool => tool.Draw()),
                 Page("资源、模型和预制体", "fbx_quick_setup", "FBX 快速导入", new FbxQuickSetupTool(), tool => tool.Draw()),
@@ -48,8 +47,8 @@ namespace Bento
                 Page("场景", "prefab_replace", "预制体替换", new PrefabReplacer(), tool => tool.Draw()),
                 Page("场景", "scene_model_instance_audit", "FBX 实例检查", new SceneModelInstanceAuditTool(), tool => tool.Draw()),
 
-                Page("AI与设置", "ai_mcp", "AI/MCP", new McpIntegrationTool(), tool => tool.Draw())
             };
+            OptionalToolPageRegistry.AppendAvailable((ICollection<IBentoPage>)Pages);
         }
 
         public IReadOnlyList<IBentoPage> Pages { get; }

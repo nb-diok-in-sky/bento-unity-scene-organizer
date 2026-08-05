@@ -1,29 +1,17 @@
 {
   "name": "Bento.Editor",
   "rootNamespace": "Bento",
-  "references": [
-    "MCPForUnity.Editor",
-    "MCPForUnity.Runtime",
-    "Unity.Formats.Fbx.Editor"
-  ],
+  "references": [],
   "includePlatforms": [
     "Editor"
   ],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
   "overrideReferences": true,
-  "precompiledReferences": [
-    "Newtonsoft.Json.dll"
-  ],
+  "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [],
-  "versionDefines": [
-    {
-      "name": "com.unity.formats.fbx",
-      "expression": "5.1.0",
-      "define": "BENTO_HAS_FBX_EXPORTER"
-    }
-  ],
+  "versionDefines": [],
   "noEngineReferences": false
 }
 

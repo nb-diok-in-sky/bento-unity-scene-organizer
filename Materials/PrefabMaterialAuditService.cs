@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    static class PrefabMaterialAuditService
+    public static class PrefabMaterialAuditService
     {
         public static object Audit(string materialFolder, IReadOnlyList<string> prefabPaths)
         {

@@ -29,7 +29,7 @@ namespace Bento
         }
     }
 
-    static class BentoCommand
+    public static class BentoCommand
     {
         public static bool Confirm(string title, string message, string confirm = "执行")
         {

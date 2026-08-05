@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    interface IBentoPage
+    public interface IBentoPage
     {
         string Name { get; }
         string Group { get; }
@@ -13,14 +13,14 @@ namespace Bento
         void Draw();
     }
 
-    interface IBentoPageLifecycle
+    public interface IBentoPageLifecycle
     {
         void OnActivated();
         void OnDeactivated();
         void OnSelectionChanged();
     }
 
-    sealed class BentoPage : IBentoPage, IBentoPageLifecycle
+    public sealed class BentoPage : IBentoPage, IBentoPageLifecycle
     {
         readonly Action _draw;
         readonly IBentoPageLifecycle _lifecycle;

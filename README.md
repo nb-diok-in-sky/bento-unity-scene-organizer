@@ -39,7 +39,9 @@ Blender 路径保存在本机 `EditorPrefs`，不会提交到 Git。
 Assets/Editor/Bento
 ```
 
-MCP 相关脚本依赖 MCP for Unity。没有安装该插件的项目需要移除 MCP 相关脚本，或后续使用程序集宏隔离。
+MCP for Unity 和 Unity FBX Exporter 均为可选依赖。未安装时对应页面和源码不会参与编译，
+其余工具可继续正常使用。工具箱首次加载时会自动检测依赖并启用或隐藏对应页面；
+安装或移除包后，也可执行 `Tools/Bento > 刷新可选依赖模块` 手动刷新。
 
 本仓库不保存 `.mcp.json`、密钥或个人 AI 配置。
 

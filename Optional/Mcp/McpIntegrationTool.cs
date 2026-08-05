@@ -12,7 +12,7 @@ namespace Bento
     {
         static readonly string[] DangerousTools = { "execute_code", "manage_asset", "manage_script", "execute_menu_item" };
         static readonly string[] ReadOnlyTools = { "find_gameobjects", "read_console" };
-        const string McpPackageId = "com.coplaydev.mcp-for-unity";
+        const string McpPackageId = "com.coplaydev.unity-mcp";
         static readonly string McpConfigPath = Path.GetFullPath(Path.Combine(Application.dataPath, "../.mcp.json"));
 
         public void Draw()

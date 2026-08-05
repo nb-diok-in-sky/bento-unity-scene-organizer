@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    static class BentoGUI
+    public static class BentoGUI
     {
         public static DefaultAsset DrawProjectFolder(string label, DefaultAsset current, out string path)
         {
