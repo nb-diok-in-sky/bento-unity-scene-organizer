@@ -8,6 +8,7 @@ namespace Bento
 {
     public class BentoWindow : EditorWindow
     {
+        const string FavoritesGroup = "常用";
         const float CompactWidth = 860f;
         const float NavigationWidth = 220f;
         const float GroupButtonHeight = 34f;
@@ -18,6 +19,7 @@ namespace Bento
         List<IBentoPage> _pages;
         string[] _pageNames;
         string[] _groupNames;
+        IReadOnlyList<IBentoPage> _favoritePages;
         IBentoPage _activePage;
         Vector2 _pageScroll;
         string _pageError;
@@ -35,6 +37,8 @@ namespace Bento
             if (string.Equals(pageName, "hierarchy_rename", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(pageName, "project_asset_rename", StringComparison.OrdinalIgnoreCase))
                 pageName = "batch_rename";
+            else if (string.Equals(pageName, "material_tools", StringComparison.OrdinalIgnoreCase))
+                pageName = "select_used_assets";
             var window = GetWindow<BentoWindow>("Bento");
             window.minSize = new Vector2(760, 620);
             window.EnsurePages();
@@ -93,7 +97,12 @@ namespace Bento
         {
             using (new EditorGUILayout.VerticalScope(GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true)))
             {
-                EditorGUILayout.LabelField(CurrentPageName, TitleStyle, GUILayout.Height(28));
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    EditorGUILayout.LabelField(CurrentPageName, TitleStyle, GUILayout.Height(28));
+                    GUILayout.FlexibleSpace();
+                    DrawFavoriteButton(_activePage, GUILayout.Width(42), GUILayout.Height(28));
+                }
                 EditorGUILayout.Space(8);
                 _pageScroll = EditorGUILayout.BeginScrollView(_pageScroll, GUILayout.ExpandHeight(true));
                 try
@@ -132,16 +141,26 @@ namespace Bento
                 if (nextGroup != _groupTab)
                 {
                     _groupTab = nextGroup;
-                    SelectPage(_pages.FindIndex(page => page.Group == _groupNames[_groupTab]));
+                    SelectFirstPageInGroup(_groupNames[_groupTab]);
                 }
-                var groupPages = _pages.Select((page, index) => new { page, index })
-                    .Where(item => item.page.Group == _groupNames[_groupTab]).ToArray();
-                int localIndex = Array.FindIndex(groupPages, item => item.index == _mainTab);
-                int nextPage = EditorGUILayout.Popup(Mathf.Max(0, localIndex), groupPages.Select(item => item.page.Name).ToArray(), PopupStyle, GUILayout.Height(28));
-                if (nextPage >= 0 && nextPage < groupPages.Length && groupPages[nextPage].index != _mainTab)
+
+                IBentoPage[] groupPages = GetPagesForGroup(_groupNames[_groupTab]).ToArray();
+                if (groupPages.Length == 0)
                 {
-                    SelectPage(groupPages[nextPage].index);
+                    EditorGUILayout.LabelField("暂无收藏", EditorStyles.miniLabel);
                 }
+                else
+                {
+                    int localIndex = Array.IndexOf(groupPages, _activePage);
+                    int nextPage = EditorGUILayout.Popup(
+                        Mathf.Max(0, localIndex),
+                        groupPages.Select(page => page.Name).ToArray(),
+                        PopupStyle,
+                        GUILayout.Height(28));
+                    if (nextPage >= 0 && nextPage < groupPages.Length && groupPages[nextPage] != _activePage)
+                        SelectPage(_pages.IndexOf(groupPages[nextPage]));
+                }
+                DrawFavoriteButton(_activePage, GUILayout.Width(34), GUILayout.Height(28));
             }
         }
 
@@ -151,9 +170,13 @@ namespace Bento
             var catalog = new BentoCatalog();
             _pages = catalog.Pages.ToList();
             _pageNames = _pages.Select(page => page.Name).ToArray();
-            _groupNames = _pages.Select(page => page.Group).Distinct().ToArray();
+            RefreshFavorites();
+            _groupNames = new[] { FavoritesGroup }
+                .Concat(_pages.Select(page => page.Group).Distinct())
+                .ToArray();
             _mainTab = Mathf.Clamp(_mainTab, 0, _pages.Count - 1);
             _activePage = _pages[_mainTab];
+            _groupTab = Math.Max(0, Array.IndexOf(_groupNames, _activePage.Group));
             NotifyLifecycle(_activePage, lifecycle => lifecycle.OnActivated(), "激活");
         }
 
@@ -175,16 +198,32 @@ namespace Bento
                     if (GUILayout.Toggle(selectedGroup, group, GroupStyle, GUILayout.Height(GroupButtonHeight)))
                     {
                         if (!selectedGroup)
-                        {
-                            SelectPage(_pages.FindIndex(page => page.Group == group));
-                        }
+                            SelectFirstPageInGroup(group);
                     }
                     if (_groupTab != groupIndex) continue;
-                    foreach (int pageIndex in _pages.Select((page, index) => new { page, index }).Where(item => item.page.Group == group).Select(item => item.index))
-                        if (GUILayout.Toggle(_mainTab == pageIndex, _pages[pageIndex].Name, PageStyle, GUILayout.Height(PageButtonHeight)) && _mainTab != pageIndex)
+
+                    IBentoPage[] groupPages = GetPagesForGroup(group).ToArray();
+                    if (groupPages.Length == 0)
+                    {
+                        EditorGUILayout.HelpBox(
+                            "还没有常用功能。进入任意页面后点击右上角的 ☆ 即可收藏。",
+                            MessageType.None);
+                    }
+                    foreach (IBentoPage page in groupPages)
+                    {
+                        using (new EditorGUILayout.HorizontalScope())
                         {
-                            SelectPage(pageIndex);
+                            int pageIndex = _pages.IndexOf(page);
+                            if (GUILayout.Toggle(
+                                    _mainTab == pageIndex,
+                                    page.Name,
+                                    PageStyle,
+                                    GUILayout.Height(PageButtonHeight)) &&
+                                _mainTab != pageIndex)
+                                SelectPage(pageIndex);
+                            DrawFavoriteButton(page, GUILayout.Width(30), GUILayout.Height(PageButtonHeight));
                         }
+                    }
                     EditorGUILayout.Space(8);
                 }
             }
@@ -227,11 +266,56 @@ namespace Bento
             if (index < 0 || index >= _pages.Count || index == _mainTab && _activePage == _pages[index]) return;
             NotifyLifecycle(_activePage, lifecycle => lifecycle.OnDeactivated(), "切换前停用");
             _mainTab = index;
-            _groupTab = Array.IndexOf(_groupNames, _pages[index].Group);
+            if (_groupTab != Array.IndexOf(_groupNames, FavoritesGroup) ||
+                !_favoritePages.Contains(_pages[index]))
+                _groupTab = Array.IndexOf(_groupNames, _pages[index].Group);
             _activePage = _pages[index];
             _pageScroll = Vector2.zero;
             _pageError = null;
             NotifyLifecycle(_activePage, lifecycle => lifecycle.OnActivated(), "激活");
+        }
+
+        IEnumerable<IBentoPage> GetPagesForGroup(string group)
+        {
+            return string.Equals(group, FavoritesGroup, StringComparison.Ordinal)
+                ? _favoritePages
+                : _pages.Where(page => page.Group == group);
+        }
+
+        void SelectFirstPageInGroup(string group)
+        {
+            IBentoPage page = GetPagesForGroup(group).FirstOrDefault();
+            if (page == null)
+            {
+                _groupTab = Array.IndexOf(_groupNames, group);
+                return;
+            }
+
+            _groupTab = Array.IndexOf(_groupNames, group);
+            SelectPage(_pages.IndexOf(page));
+            if (string.Equals(group, FavoritesGroup, StringComparison.Ordinal))
+                _groupTab = Array.IndexOf(_groupNames, FavoritesGroup);
+        }
+
+        void DrawFavoriteButton(IBentoPage page, params GUILayoutOption[] options)
+        {
+            if (page == null) return;
+            bool favorite = BentoFavorites.Contains(page.Id);
+            if (!GUILayout.Button(
+                    new GUIContent(favorite ? "★" : "☆", favorite ? "从常用中移除" : "加入常用"),
+                    options))
+                return;
+
+            BentoFavorites.Toggle(page.Id);
+            RefreshFavorites();
+            if (_groupNames[_groupTab] == FavoritesGroup && _favoritePages.Count == 0)
+                _groupTab = Array.IndexOf(_groupNames, page.Group);
+            Repaint();
+        }
+
+        void RefreshFavorites()
+        {
+            _favoritePages = BentoFavorites.Resolve(_pages);
         }
 
         static void NotifyLifecycle(IBentoPage page, Action<IBentoPageLifecycle> action, string phase)

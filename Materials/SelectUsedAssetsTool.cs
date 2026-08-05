@@ -12,7 +12,6 @@ namespace Bento
         readonly List<Material> _materials = new List<Material>();
         readonly List<Texture> _textures = new List<Texture>();
         readonly SelectedAssetClassificationTool _classificationTool = new SelectedAssetClassificationTool();
-        readonly SceneMaterialPickerController _materialPicker = new SceneMaterialPickerController();
         Vector2 _scroll;
 
         public void Draw()
@@ -21,8 +20,6 @@ namespace Bento
             EditorGUILayout.HelpBox(
                 "锁定场景网格物体或 Project 中的 Prefab/FBX，收集模型资产、材质球和材质贴图。Terrain 自动忽略，请使用 Terrain 专用工具。",
                 MessageType.Info);
-            DrawMaterialPicker();
-
             List<GameObject> current = UsedAssetSelectionScanner.ResolveCurrentRoots();
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -63,25 +60,6 @@ namespace Bento
             DrawGroup("贴图", _textures);
             EditorGUILayout.EndScrollView();
             _classificationTool.Draw(_models, _materials, _textures);
-        }
-
-        void DrawMaterialPicker()
-        {
-            EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("场景材质吸管", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox(
-                "启用后在 Scene 视图点击模型表面，即可在 Project 中选中对应材质。无法精确命中子网格时会列出 Renderer 材质槽供选择。",
-                MessageType.Info);
-            if (GUILayout.Button(_materialPicker.IsActive ? "停止吸取" : "开始吸取材质", GUILayout.Height(30)))
-            {
-                if (_materialPicker.IsActive) _materialPicker.Stop();
-                else _materialPicker.Start();
-            }
-
-            EditorGUILayout.HelpBox(
-                _materialPicker.Status,
-                _materialPicker.IsActive ? MessageType.Warning : MessageType.None);
-            EditorGUILayout.Space(6);
         }
 
         void Scan(IEnumerable<GameObject> roots)
@@ -151,7 +129,7 @@ namespace Bento
         }
 
         public void OnActivated() { }
-        public void OnDeactivated() => _materialPicker.Stop();
+        public void OnDeactivated() { }
         public void OnSelectionChanged() { }
 
         [MenuItem("GameObject/Bento/选中物体的模型、材质和贴图", false, -8990)]
