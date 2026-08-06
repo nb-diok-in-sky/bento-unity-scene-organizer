@@ -12,7 +12,7 @@ namespace Bento
             baseName = "Object",
             appendNumber = true
         };
-        bool _preserveOriginalNames;
+        bool _addPrefixSuffixOnly;
         Vector2 _scrollPosition;
 
         public void Draw()
@@ -37,10 +37,10 @@ namespace Bento
                 MessageType.Info);
 
             _naming.prefix = EditorGUILayout.TextField(new GUIContent("前缀", "添加到名称最前面，可留空。"), _naming.prefix);
-            _preserveOriginalNames = EditorGUILayout.ToggleLeft(
-                new GUIContent("保留各自原名", "每个对象保留当前名称，只统一添加前缀、后缀和可选编号。"),
-                _preserveOriginalNames);
-            using (new EditorGUI.DisabledScope(_preserveOriginalNames))
+            _addPrefixSuffixOnly = EditorGUILayout.ToggleLeft(
+                new GUIContent("单独增加前后缀", "保留每个对象当前名称，只统一添加前缀、后缀和可选编号。"),
+                _addPrefixSuffixOnly);
+            using (new EditorGUI.DisabledScope(_addPrefixSuffixOnly))
                 _naming.baseName = EditorGUILayout.TextField(
                     new GUIContent("基础名称", "所有选中对象使用的主体名称。"),
                     _naming.baseName);
@@ -78,7 +78,7 @@ namespace Bento
 
         void DrawExecuteButton(List<GameObject> selectedObjects)
         {
-            bool missingBaseName = !_preserveOriginalNames && string.IsNullOrWhiteSpace(_naming.baseName);
+            bool missingBaseName = !_addPrefixSuffixOnly && string.IsNullOrWhiteSpace(_naming.baseName);
             using (new EditorGUI.DisabledScope(selectedObjects.Count == 0 || missingBaseName))
             {
                 if (GUILayout.Button($"重命名选中的 {selectedObjects.Count} 个对象", GUILayout.Height(36)) &&
@@ -94,7 +94,7 @@ namespace Bento
 
         bool ConfirmDuplicateNamesIfNeeded(int selectedCount)
         {
-            if (_preserveOriginalNames || _naming.appendNumber || selectedCount <= 1)
+            if (_addPrefixSuffixOnly || _naming.appendNumber || selectedCount <= 1)
                 return true;
 
             return EditorUtility.DisplayDialog(
@@ -106,7 +106,7 @@ namespace Bento
 
         string BuildName(GameObject gameObject, int index)
         {
-            if (!_preserveOriginalNames)
+            if (!_addPrefixSuffixOnly)
                 return AssetNaming.BuildName(_naming.baseName, index, _naming);
 
             var options = new AssetNamingOptions

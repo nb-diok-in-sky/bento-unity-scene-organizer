@@ -13,6 +13,7 @@ namespace Bento
         readonly List<AssetRenameEntry> _plan = new List<AssetRenameEntry>();
         Vector2 _scroll;
         AssetRenameHistory _lastHistory;
+        bool _addPrefixSuffixOnly;
 
         public void Draw()
         {
@@ -39,7 +40,12 @@ namespace Bento
             else
                 DrawSources();
             EditorGUI.BeginChangeCheck();
-            BentoGUI.DrawNamingFields(_naming, "统一基础名称（留空保留原名）");
+            _addPrefixSuffixOnly = EditorGUILayout.ToggleLeft(
+                new GUIContent("单独增加前后缀", "保留每个 Project 资产当前名称，只统一添加前缀、后缀和可选编号。"),
+                _addPrefixSuffixOnly);
+            using (new EditorGUI.DisabledScope(_addPrefixSuffixOnly))
+                _naming.baseName = EditorGUILayout.TextField("统一基础名称", _naming.baseName);
+            BentoGUI.DrawNamingAffixesAndNumbering(_naming);
             if (EditorGUI.EndChangeCheck() && _sources.Count > 0) RebuildPlan();
             DrawPlan();
             DrawActions();
@@ -95,10 +101,26 @@ namespace Bento
             {
                 string path = AssetDatabase.GetAssetPath(_sources[index]);
                 string original = System.IO.Path.GetFileNameWithoutExtension(path);
-                string name = AssetNaming.BuildName(original, index, _naming);
+                string name = AssetNaming.BuildName(
+                    original,
+                    index,
+                    BuildNamingOptions());
                 _plan.Add(SafeAssetRenameService.BuildEntry(path, name));
             }
             SafeAssetRenameService.RefreshWarnings(_plan);
+        }
+
+        AssetNamingOptions BuildNamingOptions()
+        {
+            if (!_addPrefixSuffixOnly) return _naming;
+            return new AssetNamingOptions
+            {
+                prefix = _naming.prefix,
+                suffix = _naming.suffix,
+                appendNumber = _naming.appendNumber,
+                startNumber = _naming.startNumber,
+                numberDigits = _naming.numberDigits
+            };
         }
 
         void DrawPlan()

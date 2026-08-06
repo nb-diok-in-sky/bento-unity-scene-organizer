@@ -28,6 +28,15 @@ namespace Bento
         {
             options.prefix = EditorGUILayout.TextField("前缀", options.prefix);
             options.baseName = EditorGUILayout.TextField(baseNameLabel, options.baseName);
+            DrawNamingAffixesAndNumbering(options, drawPrefix: false);
+        }
+
+        public static void DrawNamingAffixesAndNumbering(
+            AssetNamingOptions options,
+            bool drawPrefix = true)
+        {
+            if (drawPrefix)
+                options.prefix = EditorGUILayout.TextField("前缀", options.prefix);
             options.suffix = EditorGUILayout.TextField("后缀", options.suffix);
             options.appendNumber = EditorGUILayout.Toggle("自动编号", options.appendNumber);
             if (!options.appendNumber) return;
