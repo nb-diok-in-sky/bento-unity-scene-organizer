@@ -12,6 +12,7 @@ namespace Bento
             baseName = "Object",
             appendNumber = true
         };
+        bool _preserveOriginalNames;
         Vector2 _scrollPosition;
 
         public void Draw()
@@ -36,7 +37,13 @@ namespace Bento
                 MessageType.Info);
 
             _naming.prefix = EditorGUILayout.TextField(new GUIContent("前缀", "添加到名称最前面，可留空。"), _naming.prefix);
-            _naming.baseName = EditorGUILayout.TextField(new GUIContent("基础名称", "所有选中对象使用的主体名称。"), _naming.baseName);
+            _preserveOriginalNames = EditorGUILayout.ToggleLeft(
+                new GUIContent("保留各自原名", "每个对象保留当前名称，只统一添加前缀、后缀和可选编号。"),
+                _preserveOriginalNames);
+            using (new EditorGUI.DisabledScope(_preserveOriginalNames))
+                _naming.baseName = EditorGUILayout.TextField(
+                    new GUIContent("基础名称", "所有选中对象使用的主体名称。"),
+                    _naming.baseName);
             _naming.suffix = EditorGUILayout.TextField(new GUIContent("后缀", "添加到编号后面，可留空。"), _naming.suffix);
             _naming.appendNumber = EditorGUILayout.Toggle("自动编号", _naming.appendNumber);
             if (_naming.appendNumber)
@@ -61,7 +68,8 @@ namespace Bento
             {
                 int previewCount = Mathf.Min(selectedObjects.Count, 30);
                 for (int index = 0; index < previewCount; index++)
-                    EditorGUILayout.LabelField($"{selectedObjects[index].name}  →  {BuildName(index)}");
+                    EditorGUILayout.LabelField(
+                        $"{selectedObjects[index].name}  →  {BuildName(selectedObjects[index], index)}");
                 if (selectedObjects.Count > previewCount)
                     EditorGUILayout.LabelField($"……其余 {selectedObjects.Count - previewCount} 个对象");
             }
@@ -70,7 +78,8 @@ namespace Bento
 
         void DrawExecuteButton(List<GameObject> selectedObjects)
         {
-            using (new EditorGUI.DisabledScope(selectedObjects.Count == 0 || string.IsNullOrWhiteSpace(_naming.baseName)))
+            bool missingBaseName = !_preserveOriginalNames && string.IsNullOrWhiteSpace(_naming.baseName);
+            using (new EditorGUI.DisabledScope(selectedObjects.Count == 0 || missingBaseName))
             {
                 if (GUILayout.Button($"重命名选中的 {selectedObjects.Count} 个对象", GUILayout.Height(36)) &&
                     ConfirmDuplicateNamesIfNeeded(selectedObjects.Count))
@@ -79,25 +88,36 @@ namespace Bento
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(_naming.baseName))
+            if (missingBaseName)
                 EditorGUILayout.HelpBox("基础名称不能为空。", MessageType.Warning);
         }
 
         bool ConfirmDuplicateNamesIfNeeded(int selectedCount)
         {
-            if (_naming.appendNumber || selectedCount <= 1)
+            if (_preserveOriginalNames || _naming.appendNumber || selectedCount <= 1)
                 return true;
 
             return EditorUtility.DisplayDialog(
                 "确认使用相同名称",
-                $"自动编号已关闭，{selectedCount} 个对象都会被重命名为同一个名称：\n{BuildName(0)}\n\n仍要继续吗？",
+                $"自动编号已关闭，{selectedCount} 个对象都会被重命名为同一个名称：\n{BuildName(null, 0)}\n\n仍要继续吗？",
                 "继续重命名",
                 "取消");
         }
 
-        string BuildName(int index)
+        string BuildName(GameObject gameObject, int index)
         {
-            return AssetNaming.BuildName(_naming.baseName, index, _naming);
+            if (!_preserveOriginalNames)
+                return AssetNaming.BuildName(_naming.baseName, index, _naming);
+
+            var options = new AssetNamingOptions
+            {
+                prefix = _naming.prefix,
+                suffix = _naming.suffix,
+                appendNumber = _naming.appendNumber,
+                startNumber = _naming.startNumber,
+                numberDigits = _naming.numberDigits
+            };
+            return AssetNaming.BuildName(gameObject?.name ?? string.Empty, index, options);
         }
 
         void RenameSelected(List<GameObject> selectedObjects)
@@ -108,7 +128,7 @@ namespace Bento
                 {
                     var gameObject = selectedObjects[index];
                     Undo.RecordObject(gameObject, "重命名场景对象");
-                    gameObject.name = BuildName(index);
+                    gameObject.name = BuildName(gameObject, index);
                     EditorSceneManager.MarkSceneDirty(gameObject.scene);
                 }
                 undo.Complete();
