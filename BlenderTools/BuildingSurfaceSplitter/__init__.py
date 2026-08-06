@@ -3069,6 +3069,44 @@ class Bento_OT_export_fbx(Operator):
         return {"FINISHED"}
 
 
+class Bento_OT_auto_smooth_selected(Operator):
+    bl_idname = "bento.auto_smooth_selected"
+    bl_label = "选中对象自动平滑"
+    bl_description = "调用 Blender 自动平滑着色处理当前选中的网格对象。不会自动用于其他对象，可以撤销"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        selected_meshes = [
+            obj for obj in context.selected_objects if is_mesh_object(obj)
+        ]
+        if not selected_meshes:
+            self.report({"WARNING"}, "请先选择需要修复阴影的网格对象")
+            return {"CANCELLED"}
+        active = context.view_layer.objects.active
+        bpy.ops.object.select_all(action="DESELECT")
+        for obj in selected_meshes:
+            obj.hide_set(False)
+            obj.select_set(True)
+        context.view_layer.objects.active = (
+            active if active in selected_meshes else selected_meshes[0]
+        )
+        try:
+            bpy.ops.object.shade_auto_smooth()
+        except (AttributeError, RuntimeError):
+            self.report(
+                {"ERROR"},
+                "当前 Blender 版本不支持自动平滑操作，请使用物体右键菜单中的自动平滑着色",
+            )
+            return {"CANCELLED"}
+        self.report(
+            {"INFO"},
+            f"已对 {len(selected_meshes)} 个选中网格应用自动平滑",
+        )
+        return {"FINISHED"}
+
+
 class Bento_PT_surface_splitter(Panel):
     bl_label = "建筑内外墙拆分"
     bl_idname = "Bento_PT_surface_splitter"
@@ -3154,20 +3192,59 @@ class Bento_PT_surface_splitter(Panel):
 
         box = layout.box()
         box.label(text="7. 生成分类对象与导出")
+        box.label(text="可选阴影修复")
+        box.operator(
+            "bento.auto_smooth_selected",
+            text="对选中对象应用自动平滑",
+            icon="NORMALS_FACE",
+        )
+        box.label(text="仅在墙面出现异常渐变阴影时使用", icon="INFO")
         box.prop(settings, "interior_name")
         box.prop(settings, "exterior_name")
         box.prop(settings, "roof_name")
         box.prop(settings, "name_placement")
         box.prop(settings, "use_name_separator")
+        preview_source = next(
+            (obj.name for obj in iter_target_objects(context)),
+            "原物体名",
+        )
+        interior_preview = compose_output_name(
+            preview_source,
+            settings.interior_name,
+            settings.name_placement,
+            settings.use_name_separator,
+        )
+        exterior_preview = compose_output_name(
+            preview_source,
+            settings.exterior_name,
+            settings.name_placement,
+            settings.use_name_separator,
+        )
+        box.label(text=f"命名预览：{interior_preview}")
+        box.label(text=f"　　　　　{exterior_preview}")
         box.prop(settings, "replace_source_objects")
         box.operator("bento.split_building_surfaces", icon="MOD_EXPLODE")
         box.prop(settings, "overwrite_source_fbx")
         if settings.overwrite_source_fbx:
             box.prop(settings, "source_fbx_path")
+            box.label(text="导出时直接替换上面的源 FBX 文件", icon="ERROR")
         else:
             box.prop(settings, "output_fbx_name")
             box.prop(settings, "export_path")
+            resolved_path = resolve_export_path(settings)
+            box.label(
+                text=f"导出预览：{resolved_path or '尚未确定输出路径'}",
+                icon="FILE",
+            )
         box.prop(settings, "export_after_split")
+        box.label(
+            text=(
+                "开启：点击“确认并分离”后自动导出"
+                if settings.export_after_split
+                else "关闭：分离后再手动点击“导出分类 FBX”"
+            ),
+            icon="INFO",
+        )
         box.operator("bento.export_building_fbx", icon="EXPORT")
 
         debug_box = layout.box()
@@ -3222,6 +3299,7 @@ CLASSES = (
     Bento_OT_overwrite_class,
     Bento_OT_split_surfaces,
     Bento_OT_export_fbx,
+    Bento_OT_auto_smooth_selected,
     Bento_PT_surface_splitter,
 )
 
