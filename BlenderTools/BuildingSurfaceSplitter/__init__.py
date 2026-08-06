@@ -25,6 +25,8 @@ CUT_FACE_ATTRIBUTE = "bento_horizontal_cut_face"
 CUT_PREVIEW_NAME = "Bento_HorizontalCutPreview"
 NEW_CUT_EDGE_ATTRIBUTE = "bento_new_cut_edge"
 CUT_PLAN_PROPERTY = "bento_cut_plan"
+CUT_PREVIEW_OFFSET_PROPERTY = "bento_cut_preview_offset"
+CUT_PREVIEW_PLAN_ATTRIBUTE = "bento_cut_plan_index"
 CLASS_UNCLASSIFIED = 0
 CLASS_INTERIOR = 1
 CLASS_EXTERIOR = 2
@@ -709,6 +711,98 @@ def load_cut_plan():
     return list(value) if value else []
 
 
+def plan_item_from_preview_line(template, first, second, preview_offset):
+    first = Vector(first)
+    second = Vector(second)
+    first.z -= preview_offset
+    second.z -= preview_offset
+    direction = second - first
+    direction.z = 0.0
+    if direction.length_squared <= 1e-10:
+        return None
+    direction.normalize()
+    plane_normal = Vector((-direction.y, direction.x, 0.0))
+    item = dict(template)
+    item["start"] = [float(value) for value in first]
+    item["end"] = [float(value) for value in second]
+    item["segment_start"] = [float(value) for value in first]
+    item["segment_end"] = [float(value) for value in second]
+    item["plane_point"] = [float(value) for value in first]
+    item["plane_normal"] = [float(value) for value in plane_normal]
+    item["manual"] = True
+    return item
+
+
+def nearest_saved_face_template(targets, midpoint, tolerance):
+    best = None
+    best_distance = float("inf")
+    for obj, polygon in iter_saved_cut_faces(targets):
+        center = obj.matrix_world @ polygon.center
+        distance = (center - midpoint).length
+        if distance >= best_distance:
+            continue
+        best_distance = distance
+        best = {
+            "object": obj.name,
+            "face": polygon.index,
+            "faces": [polygon.index],
+            "segment": -1,
+        }
+    if best is None or best_distance > tolerance:
+        return None
+    return best
+
+
+def saved_face_templates_for_preview_line(
+    targets, first, second, preview_offset, tolerance
+):
+    first = Vector(first)
+    second = Vector(second)
+    first.z -= preview_offset
+    second.z -= preview_offset
+    direction = second - first
+    direction.z = 0.0
+    segment_length = direction.length
+    if segment_length <= 1e-8:
+        return []
+    direction.normalize()
+    plane_normal = Vector((-direction.y, direction.x, 0.0))
+    grouped = {}
+    for obj, polygon in iter_saved_cut_faces(targets):
+        vertices = [
+            obj.matrix_world @ obj.data.vertices[vertex_index].co
+            for vertex_index in polygon.vertices
+        ]
+        if not vertices:
+            continue
+        signed_distances = [
+            (vertex - first).dot(plane_normal) for vertex in vertices
+        ]
+        if min(signed_distances) > tolerance or max(signed_distances) < -tolerance:
+            continue
+        along_values = [(vertex - first).dot(direction) for vertex in vertices]
+        if max(along_values) < -tolerance or min(along_values) > segment_length + tolerance:
+            continue
+        center = obj.matrix_world @ polygon.center
+        vertical_min = min(first.z, second.z) - tolerance
+        vertical_max = max(first.z, second.z) + tolerance
+        polygon_min_z = min(vertex.z for vertex in vertices)
+        polygon_max_z = max(vertex.z for vertex in vertices)
+        if polygon_max_z < vertical_min or polygon_min_z > vertical_max:
+            continue
+        grouped.setdefault(obj.name, []).append(polygon.index)
+    return [
+        {
+            "object": object_name,
+            "face": face_indices[0],
+            "faces": sorted(set(face_indices)),
+            "segment": -1,
+        }
+        for object_name, face_indices in grouped.items()
+        if face_indices
+    ]
+
+
 def preview_hit_faces():
     preview = bpy.data.objects.get(CUT_PREVIEW_NAME)
     if preview is None:
@@ -1014,7 +1108,10 @@ def remove_cut_preview():
     data = preview.data
     bpy.data.objects.remove(preview, do_unlink=True)
     if data and data.users == 0:
-        bpy.data.curves.remove(data)
+        if isinstance(data, bpy.types.Mesh):
+            bpy.data.meshes.remove(data)
+        elif isinstance(data, bpy.types.Curve):
+            bpy.data.curves.remove(data)
 
 
 def iter_saved_cut_faces(targets):
@@ -1032,45 +1129,47 @@ def saved_cut_face_count(targets):
 
 
 def cut_preview_is_valid(preview):
-    if preview is None or preview.type != "CURVE":
+    if preview is None or preview.type != "MESH":
         return False
-    return bool(load_cut_plan()) and len(preview.data.splines) > 0
+    return bool(load_cut_plan()) and len(preview.data.edges) > 0
 
 
 def create_cut_preview(context, footprints, targets, settings):
     remove_cut_preview()
-    curve = bpy.data.curves.new(CUT_PREVIEW_NAME, type="CURVE")
-    curve.dimensions = "3D"
-    curve.bevel_depth = 0.003
-    curve.bevel_resolution = 1
-    curve.resolution_u = 1
     plan = build_horizontal_cut_plan(targets, footprints, settings)
-    preview_count = 0
     hit_faces = {}
     preview_offset = max(settings.volume_tolerance * 2.0, 0.001)
-    for item in plan:
+    vertices = []
+    edges = []
+    for index, item in enumerate(plan):
         clipped_first = Vector(item["start"])
         clipped_second = Vector(item["end"])
-        spline = curve.splines.new("POLY")
-        spline.points.add(1)
-        spline.points[0].co = (
+        first_index = len(vertices)
+        vertices.append((
             clipped_first.x,
             clipped_first.y,
             clipped_first.z + preview_offset,
-            1.0,
-        )
-        spline.points[1].co = (
+        ))
+        vertices.append((
             clipped_second.x,
             clipped_second.y,
             clipped_second.z + preview_offset,
-            1.0,
-        )
-        preview_count += 1
+        ))
+        edges.append((first_index, first_index + 1))
     for item in plan:
         hit_faces.setdefault(item["object"], set()).add(int(item["face"]))
-    preview = bpy.data.objects.new(CUT_PREVIEW_NAME, curve)
+    mesh = bpy.data.meshes.new(CUT_PREVIEW_NAME)
+    mesh.from_pydata(vertices, edges, [])
+    mesh.update()
+    plan_attribute = mesh.attributes.new(
+        CUT_PREVIEW_PLAN_ATTRIBUTE, "INT", "EDGE"
+    )
+    for edge in mesh.edges:
+        plan_attribute.data[edge.index].value = edge.index + 1
+    preview = bpy.data.objects.new(CUT_PREVIEW_NAME, mesh)
     context.scene.collection.objects.link(preview)
     preview["bento_cut_preview"] = True
+    preview[CUT_PREVIEW_OFFSET_PROPERTY] = float(preview_offset)
     preview.display_type = "WIRE"
     preview.color = (1.0, 0.05, 0.05, 1.0)
     preview.show_in_front = True
@@ -1078,7 +1177,7 @@ def create_cut_preview(context, footprints, targets, settings):
         name: sorted(indices) for name, indices in hit_faces.items()
     }
     save_cut_plan(preview, plan)
-    return preview, preview_count
+    return preview, len(edges)
 
 
 def normal_faces_footprint_interior(center, normal, footprint):
@@ -2325,8 +2424,8 @@ class Bento_OT_reveal_horizontal_faces(Operator):
 
 class Bento_OT_select_saved_horizontal_cut_faces(Operator):
     bl_idname = "bento.select_saved_horizontal_cut_faces"
-    bl_description = "选择所有已经保存候选标记的面。只读取标记，不会运行算法或修改标记"
-    bl_label = "选择已保存候选面"
+    bl_description = "只显示并选择所有已保存候选面，其他面会暂时隐藏。只读取标记，不会重新计算或修改模型"
+    bl_label = "只看已保存候选面"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
@@ -2352,11 +2451,14 @@ class Bento_OT_select_saved_horizontal_cut_faces(Operator):
             bm.faces.ensure_lookup_table()
             layer = bm.faces.layers.int.get(CUT_FACE_ATTRIBUTE)
             for face in bm.faces:
-                face.select = layer is not None and bool(face[layer])
-                if face.select:
+                is_saved = layer is not None and bool(face[layer])
+                face.select = is_saved
+                face.hide_set(not is_saved)
+                if is_saved:
                     count += 1
             bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
-        self.report({"INFO"}, f"已选择 {count} 个保存面")
+        bpy.ops.mesh.select_mode(type="FACE")
+        self.report({"INFO"}, f"当前只显示 {count} 个已保存候选面")
         return {"FINISHED"}
 
 
@@ -2443,6 +2545,224 @@ class Bento_OT_toggle_cut_preview(Operator):
         preview.hide_set(not preview.hide_get())
         state = "隐藏" if preview.hide_get() else "显示"
         self.report({"INFO"}, f"已{state}切线预览")
+        return {"FINISHED"}
+
+
+class Bento_OT_apply_cut_preview_edits(Operator):
+    bl_idname = "bento.apply_cut_preview_edits"
+    bl_label = "应用网格切线修改"
+    bl_description = "读取预览网格中的所有边并同步到真实切割计划：删除边会取消切割，移动顶点会改变位置，新增边会自动绑定最近的已保存候选面"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        preview = bpy.data.objects.get(CUT_PREVIEW_NAME)
+        if preview is None or preview.type != "MESH":
+            self.report({"ERROR"}, "没有切线预览，请先生成预览")
+            return {"CANCELLED"}
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        old_plan = load_cut_plan()
+        mesh = preview.data
+        if not mesh.edges:
+            save_cut_plan(preview, [])
+            self.report({"INFO"}, "预览线已全部删除，当前切割计划为空")
+            return {"FINISHED"}
+        preview_offset = float(
+            preview.get(CUT_PREVIEW_OFFSET_PROPERTY, 0.0)
+        )
+        plan_attribute = mesh.attributes.get(CUT_PREVIEW_PLAN_ATTRIBUTE)
+        targets = iter_target_objects(context)
+        bind_tolerance = max(
+            context.scene.bento_surface_splitter.horizontal_cut_expansion * 2.0,
+            0.25,
+        )
+        updated_plan = []
+        invalid_count = 0
+        new_edge_count = 0
+        new_plan_indices = []
+        for edge in mesh.edges:
+            first = preview.matrix_world @ mesh.vertices[edge.vertices[0]].co
+            second = preview.matrix_world @ mesh.vertices[edge.vertices[1]].co
+            stored_plan_index = (
+                int(plan_attribute.data[edge.index].value)
+                if plan_attribute is not None
+                and edge.index < len(plan_attribute.data)
+                else 0
+            )
+            plan_index = stored_plan_index - 1
+            if 0 <= plan_index < len(old_plan):
+                templates = [old_plan[plan_index]]
+            else:
+                templates = saved_face_templates_for_preview_line(
+                    targets,
+                    first,
+                    second,
+                    preview_offset,
+                    bind_tolerance,
+                )
+                if not templates:
+                    invalid_count += 1
+                    continue
+                new_edge_count += 1
+            first_plan_index = None
+            for template in templates:
+                item = plan_item_from_preview_line(
+                    template, first, second, preview_offset
+                )
+                if item is None:
+                    invalid_count += 1
+                    continue
+                updated_plan.append(item)
+                if first_plan_index is None:
+                    first_plan_index = len(updated_plan) - 1
+            if first_plan_index is None:
+                invalid_count += 1
+                continue
+            new_plan_indices.append(first_plan_index)
+        save_cut_plan(preview, updated_plan)
+        plan_attribute = mesh.attributes.get(CUT_PREVIEW_PLAN_ATTRIBUTE)
+        if plan_attribute is None:
+            plan_attribute = mesh.attributes.new(
+                CUT_PREVIEW_PLAN_ATTRIBUTE, "INT", "EDGE"
+            )
+        for edge, plan_index in zip(mesh.edges, new_plan_indices):
+            plan_attribute.data[edge.index].value = plan_index + 1
+        removed_count = max(
+            0, len(old_plan) + new_edge_count - len(updated_plan)
+        )
+        self.report(
+            {"INFO"},
+            f"已应用 {len(updated_plan)} 条网格切线；新增 {new_edge_count} 条，删除或无效 {removed_count + invalid_count} 条",
+        )
+        return {"FINISHED"}
+
+
+class Bento_OT_add_selected_edges_as_cuts(Operator):
+    bl_idname = "bento.add_selected_edges_as_cuts"
+    bl_label = "选中边加入切线"
+    bl_description = "在模型编辑模式选中一条或多条相连边，然后把每组相连边加入切割计划。只使用与已保存候选面相邻的边"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "EDIT_MESH":
+            self.report({"ERROR"}, "请先进入模型编辑模式并选择边")
+            return {"CANCELLED"}
+        preview = bpy.data.objects.get(CUT_PREVIEW_NAME)
+        if preview is None or preview.type != "CURVE":
+            self.report({"ERROR"}, "请先生成切线预览")
+            return {"CANCELLED"}
+        existing_plan = load_cut_plan()
+        new_items = []
+        for obj in context.objects_in_mode_unique_data:
+            bm = bmesh.from_edit_mesh(obj.data)
+            bm.edges.ensure_lookup_table()
+            marker_layer = bm.faces.layers.int.get(CUT_FACE_ATTRIBUTE)
+            selected_edges = {
+                edge for edge in bm.edges
+                if edge.select
+                and any(
+                    marker_layer is not None and bool(face[marker_layer])
+                    for face in edge.link_faces
+                )
+            }
+            while selected_edges:
+                seed = selected_edges.pop()
+                component = {seed}
+                pending = [seed]
+                while pending:
+                    edge = pending.pop()
+                    for vertex in edge.verts:
+                        for neighbor in vertex.link_edges:
+                            if neighbor in selected_edges:
+                                selected_edges.remove(neighbor)
+                                component.add(neighbor)
+                                pending.append(neighbor)
+                vertices = {
+                    vertex for edge in component for vertex in edge.verts
+                }
+                endpoints = [
+                    vertex for vertex in vertices
+                    if sum(
+                        1 for edge in vertex.link_edges
+                        if edge in component
+                    ) == 1
+                ]
+                if len(endpoints) != 2:
+                    continue
+                first = obj.matrix_world @ endpoints[0].co
+                second = obj.matrix_world @ endpoints[1].co
+                linked_faces = {
+                    face.index
+                    for edge in component
+                    for face in edge.link_faces
+                    if marker_layer is not None and bool(face[marker_layer])
+                }
+                if not linked_faces:
+                    continue
+                template = {
+                    "object": obj.name,
+                    "face": min(linked_faces),
+                    "faces": sorted(linked_faces),
+                    "segment": -1,
+                }
+                item = plan_item_from_preview_line(
+                    template, first, second, 0.0
+                )
+                if item is not None:
+                    new_items.append(item)
+        if not new_items:
+            self.report(
+                {"ERROR"},
+                "没有找到可加入的边链。请选择与已保存候选面相邻、且首尾明确的相连边",
+            )
+            return {"CANCELLED"}
+        bpy.ops.object.mode_set(mode="OBJECT")
+        preview_offset = float(
+            preview.get(CUT_PREVIEW_OFFSET_PROPERTY, 0.0)
+        )
+        for item in new_items:
+            first = Vector(item["start"])
+            second = Vector(item["end"])
+            spline = preview.data.splines.new("POLY")
+            spline.points.add(1)
+            spline.points[0].co = (
+                first.x, first.y, first.z + preview_offset, 1.0
+            )
+            spline.points[1].co = (
+                second.x, second.y, second.z + preview_offset, 1.0
+            )
+        save_cut_plan(preview, existing_plan + new_items)
+        self.report({"INFO"}, f"已加入 {len(new_items)} 条手工切线")
+        return {"FINISHED"}
+
+
+class Bento_OT_reset_cut_preview(Operator):
+    bl_idname = "bento.reset_cut_preview"
+    bl_label = "重置自动预览"
+    bl_description = "放弃所有手工删除、移动和新增的切线，重新根据已保存候选面计算自动预览"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        remove_cut_preview()
+        targets = iter_target_objects(context)
+        if saved_cut_face_count(targets) == 0:
+            self.report({"ERROR"}, "没有已保存候选面")
+            return {"CANCELLED"}
+        settings = context.scene.bento_surface_splitter
+        footprints = build_interior_footprints(
+            targets, iter_volumes(context), settings
+        )
+        if not footprints:
+            self.report({"ERROR"}, "没有可用地板轮廓")
+            return {"CANCELLED"}
+        preview, count = create_cut_preview(
+            context, footprints, targets, settings
+        )
+        preview.select_set(True)
+        context.view_layer.objects.active = preview
+        self.report({"INFO"}, f"已重置并生成 {count} 条自动切线")
         return {"FINISHED"}
 
 
@@ -2761,9 +3081,8 @@ class Bento_PT_surface_splitter(Panel):
         settings = context.scene.bento_surface_splitter
         box = layout.box()
         box.label(text="1. 室内体积")
-        row = box.row(align=True)
-        row.operator("bento.create_interior_volume", text="创建方块")
-        row.operator("bento.mark_interior_volume", text="指定选中")
+        box.operator("bento.create_interior_volume", text="添加室内方块", icon="CUBE")
+        box.label(text="需要多个房间就继续添加；位置和缩放手动调整", icon="INFO")
         box.label(text=f"当前室内方块：{len(iter_volumes(context))}")
 
         box = layout.box()
@@ -2781,10 +3100,9 @@ class Bento_PT_surface_splitter(Panel):
         box.operator("bento.exclude_and_hide_surfaces", text="排除并隐藏选中对象", icon="HIDE_ON")
 
         box = layout.box()
-        box.label(text="3. 网格预处理（不修改分类）")
-        box.label(text="照着做：计算 → 手工增减 → 保存", icon="INFO")
-        box.label(text="然后：预览 → 执行切分 → 查看新边")
-        box.label(text="预览和切分只认“已保存候选面”")
+        box.label(text="3. 横面切线")
+        box.label(text="首次或换模型：计算候选面 → 手工修补 → 保存", icon="INFO")
+        box.label(text="已有候选面：直接生成预览并执行切分")
         box.prop(settings, "horizontal_cut_angle")
         box.prop(settings, "horizontal_cut_expansion")
         box.prop(settings, "horizontal_cut_top_exclusion")
@@ -2795,13 +3113,14 @@ class Bento_PT_surface_splitter(Panel):
             text="保留选择并恢复横面",
         )
         row = box.row(align=True)
-        row.operator("bento.save_horizontal_cut_faces", text="保存当前选择为候选面")
-        row.operator("bento.select_saved_horizontal_cut_faces", text="选择已保存候选面")
-        row.operator("bento.toggle_horizontal_cut_preview", text="生成/隐藏切线预览")
-        box.operator("bento.apply_horizontal_floor_cuts", text="确认并执行切分")
+        row.operator("bento.save_horizontal_cut_faces", text="保存当前选择")
+        row.operator("bento.select_saved_horizontal_cut_faces", text="只看已保存候选面")
+        box.operator("bento.toggle_horizontal_cut_preview", text="生成/隐藏切线预览")
         row = box.row(align=True)
-        row.operator("bento.show_new_cut_edges", text="查看实际切割结果")
-        row.operator("bento.restore_cut_edges_display", text="恢复完整网格")
+        row.operator("bento.apply_cut_preview_edits", text="应用网格切线修改")
+        row.operator("bento.reset_cut_preview", text="重置自动预览")
+        box.operator("bento.apply_horizontal_floor_cuts", text="确认并执行切分")
+        box.operator("bento.restore_cut_edges_display", text="恢复完整网格显示")
 
         box = layout.box()
         box.label(text="4. 自动分类")
@@ -2894,6 +3213,8 @@ CLASSES = (
     Bento_OT_create_cut_preview,
     Bento_OT_clear_cut_preview,
     Bento_OT_toggle_cut_preview,
+    Bento_OT_apply_cut_preview_edits,
+    Bento_OT_reset_cut_preview,
     Bento_OT_show_new_cut_edges,
     Bento_OT_restore_cut_edges_display,
     Bento_OT_apply_horizontal_cuts,
