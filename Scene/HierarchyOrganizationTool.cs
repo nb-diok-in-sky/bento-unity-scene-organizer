@@ -99,6 +99,35 @@ namespace Bento
                     });
                 }
             }
+
+            DrawActivationControls();
+        }
+
+        static void DrawActivationControls()
+        {
+            GameObject[] selected = SceneObjectActivationService.GetSelectedSceneObjects();
+            int count = selected.Length;
+
+            EditorGUILayout.Space(14);
+            EditorGUILayout.LabelField("低频操作：选中对象启用状态", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "控制 Inspector 顶部的 Active 勾选框，不是 Hierarchy 的眼睛。支持多选，并可用一次 Ctrl+Z 撤销。",
+                MessageType.Info);
+
+            using (new EditorGUI.DisabledScope(count == 0))
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button($"禁用选中对象（{count}）", GUILayout.Height(30)))
+                    RunActivationCommand(false);
+                if (GUILayout.Button($"启用选中对象（{count}）", GUILayout.Height(30)))
+                    RunActivationCommand(true);
+            }
+        }
+
+        static void RunActivationCommand(bool active)
+        {
+            int changed = SceneObjectActivationService.SetSelectedActive(active);
+            Debug.Log($"[Bento] 已{(active ? "启用" : "禁用")} {changed} 个场景对象，可使用 Ctrl+Z 撤销。");
         }
 
         void DrawQuickParenting()

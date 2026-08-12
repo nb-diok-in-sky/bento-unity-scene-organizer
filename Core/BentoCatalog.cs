@@ -39,10 +39,12 @@ namespace Bento
                 Page("材质", "material_fill", "填充材质球", new MaterialFillTab(context), tool => tool.Draw()),
                 Page("材质", "select_used_assets", "选中模型材质贴图", new SelectUsedAssetsTool(), tool => tool.Draw()),
                 Page("材质", "select_terrain_paint_textures", "选中 Terrain 绘制贴图", new SelectTerrainPaintTexturesTool(), tool => tool.Draw()),
+                Page("材质", "terrain_layer_generation", "Terrain Layer 生成", new TerrainLayerGenerationTool(), tool => tool.Draw()),
                 Page("材质", "auto_process", "一键处理", new AutoProcessTab(context), tool => tool.Draw()),
                 Page("材质", "material_repair", "材质修复", new MaterialRepairTab(), tool => tool.Draw()),
 
                 Page("场景", "scene_material_replace", "场景材质替换", new SceneMaterialReplacementTool(), tool => tool.Draw()),
+                Page("场景", "scene_material_usage", "查找材质使用对象", new SceneMaterialUsageTool(), tool => tool.Draw()),
                 Page("场景", "scene_material_picker", "场景材质吸管", new SceneMaterialPickerTool(), tool => tool.Draw()),
                 Page("场景", "prefab_replace", "预制体替换", new PrefabReplacer(), tool => tool.Draw()),
                 Page("场景", "scene_model_instance_audit", "FBX 实例检查", new SceneModelInstanceAuditTool(), tool => tool.Draw()),
