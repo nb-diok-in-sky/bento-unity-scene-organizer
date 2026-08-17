@@ -4,13 +4,16 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Bento
 {
     public enum SceneMaterialReplaceMode { AllSlots, MatchingMaterial }
+    public enum SceneMaterialReplaceScope { SelectedHierarchy, LoadedScenes }
 
     public sealed class SceneMaterialReplacementPlan
     {
+        public SceneMaterialReplaceScope scope;
         public readonly List<GameObject> roots = new List<GameObject>();
         public readonly List<Renderer> renderers = new List<Renderer>();
         public int slotCount;
@@ -20,9 +23,38 @@ namespace Bento
     {
         public static SceneMaterialReplacementPlan BuildPlan(IEnumerable<GameObject> roots, SceneMaterialReplaceMode mode, Material sourceMaterial)
         {
-            var plan = new SceneMaterialReplacementPlan();
+            var plan = new SceneMaterialReplacementPlan
+            {
+                scope = SceneMaterialReplaceScope.SelectedHierarchy
+            };
             if (roots == null) return plan;
             plan.roots.AddRange(roots.Where(root => root != null && root.scene.IsValid() && root.scene.isLoaded));
+            AddMatchingRenderers(plan, mode, sourceMaterial);
+            return plan;
+        }
+
+        public static SceneMaterialReplacementPlan BuildLoadedScenesPlan(Material sourceMaterial)
+        {
+            var plan = new SceneMaterialReplacementPlan
+            {
+                scope = SceneMaterialReplaceScope.LoadedScenes
+            };
+            for (int index = 0; index < SceneManager.sceneCount; index++)
+            {
+                Scene scene = SceneManager.GetSceneAt(index);
+                if (!scene.IsValid() || !scene.isLoaded) continue;
+                plan.roots.AddRange(scene.GetRootGameObjects());
+            }
+
+            AddMatchingRenderers(plan, SceneMaterialReplaceMode.MatchingMaterial, sourceMaterial);
+            return plan;
+        }
+
+        static void AddMatchingRenderers(
+            SceneMaterialReplacementPlan plan,
+            SceneMaterialReplaceMode mode,
+            Material sourceMaterial)
+        {
             var seen = new HashSet<Renderer>();
             foreach (GameObject root in plan.roots)
             foreach (Renderer renderer in root.GetComponentsInChildren<Renderer>(true))
@@ -33,7 +65,6 @@ namespace Bento
                 plan.renderers.Add(renderer);
                 plan.slotCount += matches;
             }
-            return plan;
         }
 
         public static int Execute(SceneMaterialReplacementPlan plan, Material replacement, SceneMaterialReplaceMode mode, Material sourceMaterial)
@@ -75,9 +106,13 @@ namespace Bento
 
         static void ValidatePlan(SceneMaterialReplacementPlan plan)
         {
-            if (plan.renderers.Any(renderer => renderer == null ||
-                !plan.roots.Any(root => root != null &&
-                    (renderer.transform == root.transform || renderer.transform.IsChildOf(root.transform)))))
+            if (plan.renderers.Any(renderer =>
+                    renderer == null ||
+                    !renderer.gameObject.scene.IsValid() ||
+                    !renderer.gameObject.scene.isLoaded ||
+                    !plan.roots.Any(root => root != null &&
+                        (renderer.transform == root.transform ||
+                         renderer.transform.IsChildOf(root.transform)))))
                 throw new InvalidOperationException("场景对象已变化，请重新选择或刷新计划后再执行。");
         }
 

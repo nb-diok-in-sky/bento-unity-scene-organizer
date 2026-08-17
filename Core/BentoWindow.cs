@@ -113,6 +113,10 @@ namespace Bento
                         {
                             _pages[Mathf.Clamp(_mainTab, 0, _pages.Count - 1)].Draw();
                         }
+                        catch (ExitGUIException)
+                        {
+                            throw;
+                        }
                         catch (Exception exception)
                         {
                             _pageError = exception.ToString();
@@ -324,6 +328,10 @@ namespace Bento
             try
             {
                 action(lifecycle);
+            }
+            catch (ExitGUIException)
+            {
+                throw;
             }
             catch (Exception exception)
             {

@@ -45,6 +45,10 @@ namespace Bento
                 if (!string.IsNullOrEmpty(message)) EditorUtility.DisplayDialog("操作完成", message, "确定");
                 return true;
             }
+            catch (ExitGUIException)
+            {
+                throw;
+            }
             catch (Exception exception)
             {
                 Debug.LogException(exception);

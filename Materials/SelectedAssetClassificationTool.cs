@@ -26,27 +26,42 @@ namespace Bento
             EditorGUILayout.Space(8);
             EditorGUILayout.LabelField("分类移动与独立改名", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "直接使用上方扫描结果，通过 AssetDatabase.MoveAsset 分类移动并验证 GUID。模型、材质、贴图分别独立编号。",
+                "填写哪一类目标文件夹，就移动哪一类资产；目标留空的类别自动跳过。模型、材质、贴图按实际资产类型和扩展名分类，移动后验证 GUID。",
                 MessageType.Info);
 
             EditorGUI.BeginChangeCheck();
-            _modelFolder = BentoGUI.DrawProjectFolder("模型移动至", _modelFolder, out _modelFolderPath);
-            _materialFolder = BentoGUI.DrawProjectFolder("材质移动至", _materialFolder, out _materialFolderPath);
-            _textureFolder = BentoGUI.DrawProjectFolder("贴图移动至", _textureFolder, out _textureFolderPath);
-            DrawNaming("模型命名", _modelNaming);
-            DrawNaming("材质命名", _materialNaming);
-            DrawNaming("贴图命名", _textureNaming);
+            _modelFolder = BentoGUI.DrawProjectFolder(
+                $"模型移动至（{models.Count}，留空跳过）",
+                _modelFolder,
+                out _modelFolderPath);
+            _materialFolder = BentoGUI.DrawProjectFolder(
+                $"材质移动至（{materials.Count}，留空跳过）",
+                _materialFolder,
+                out _materialFolderPath);
+            _textureFolder = BentoGUI.DrawProjectFolder(
+                $"贴图移动至（{textures.Count}，留空跳过）",
+                _textureFolder,
+                out _textureFolderPath);
+
+            if (!string.IsNullOrEmpty(_modelFolderPath))
+                DrawNaming("模型命名", _modelNaming);
+            if (!string.IsNullOrEmpty(_materialFolderPath))
+                DrawNaming("材质命名", _materialNaming);
+            if (!string.IsNullOrEmpty(_textureFolderPath))
+                DrawNaming("贴图命名", _textureNaming);
             if (EditorGUI.EndChangeCheck() && _plan.Count > 0) BuildPlan(models, materials, textures);
 
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                bool hasAssets = models.Count + materials.Count + textures.Count > 0;
-                using (new EditorGUI.DisabledScope(!hasAssets))
-                    if (GUILayout.Button($"生成分类移动计划（{models.Count + materials.Count + textures.Count}）", GUILayout.Height(34)))
-                        BuildPlan(models, materials, textures);
-                using (new EditorGUI.DisabledScope(_plan.Count == 0))
-                    if (GUILayout.Button("清空计划", GUILayout.Height(34))) _plan.Clear();
-            }
+            int enabledAssetCount =
+                (!string.IsNullOrEmpty(_modelFolderPath) ? models.Count : 0) +
+                (!string.IsNullOrEmpty(_materialFolderPath) ? materials.Count : 0) +
+                (!string.IsNullOrEmpty(_textureFolderPath) ? textures.Count : 0);
+            bool hasValidTargets =
+                (models.Count > 0 && BentoUtility.IsProjectFolder(_modelFolderPath)) ||
+                (materials.Count > 0 && BentoUtility.IsProjectFolder(_materialFolderPath)) ||
+                (textures.Count > 0 && BentoUtility.IsProjectFolder(_textureFolderPath));
+            using (new EditorGUI.DisabledScope(enabledAssetCount == 0 || !hasValidTargets))
+                if (GUILayout.Button($"生成分类移动计划（{enabledAssetCount}）", GUILayout.Height(34)))
+                    BuildPlan(models, materials, textures);
 
             DrawPrimaryAction();
             DrawPlan();
@@ -64,10 +79,24 @@ namespace Bento
         void BuildPlan(IReadOnlyList<UnityEngine.Object> models, IReadOnlyList<Material> materials, IReadOnlyList<Texture> textures)
         {
             _plan.Clear();
-            var selected = models.Concat(materials.Cast<UnityEngine.Object>()).Concat(textures.Cast<UnityEngine.Object>())
-                .Where(IsSupported).Distinct().ToArray();
+            var selected = Enumerable.Empty<UnityEngine.Object>();
+            if (BentoUtility.IsProjectFolder(_modelFolderPath))
+                selected = selected.Concat(models);
+            if (BentoUtility.IsProjectFolder(_materialFolderPath))
+                selected = selected.Concat(materials.Cast<UnityEngine.Object>());
+            if (BentoUtility.IsProjectFolder(_textureFolderPath))
+                selected = selected.Concat(textures.Cast<UnityEngine.Object>());
+
+            UnityEngine.Object[] movableAssets = selected
+                .Where(IsSupported)
+                .Distinct()
+                .ToArray();
             _plan.AddRange(SafeAssetMoveService.BuildPlan(
-                selected, _modelFolderPath, _materialFolderPath, _textureFolderPath, NamingForKind));
+                movableAssets,
+                _modelFolderPath,
+                _materialFolderPath,
+                _textureFolderPath,
+                NamingForKind));
         }
 
         AssetNamingOptions NamingForKind(AssetMoveKind kind)
@@ -104,7 +133,9 @@ namespace Bento
             bool valid = count > 0 && _plan.Where(entry => entry.include).All(entry => string.IsNullOrEmpty(entry.warning));
             if (_plan.Count == 0)
             {
-                EditorGUILayout.HelpBox("先在上方锁定物体并扫描，再指定三个目标文件夹。", MessageType.Info);
+                EditorGUILayout.HelpBox(
+                    "先在上方锁定物体并扫描，再填写需要移动的资产类别目标文件夹。未填写的类别会自动跳过。",
+                    MessageType.Info);
                 return;
             }
             if (!valid) EditorGUILayout.HelpBox("计划存在警告，处理完成后才可执行。", MessageType.Warning);

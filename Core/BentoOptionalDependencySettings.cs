@@ -9,7 +9,6 @@ namespace Bento
     [InitializeOnLoad]
     static class BentoOptionalDependencySettings
     {
-        const string FbxSymbol = "BENTO_ENABLE_FBX_EXPORTER";
         const string McpSymbol = "BENTO_ENABLE_MCP_FOR_UNITY";
         const string FbxPackage = "com.unity.formats.fbx";
         const string McpPackage = "com.coplaydev.unity-mcp";
@@ -34,9 +33,10 @@ namespace Bento
                 .ToArray();
 
             var next = symbols
-                .Where(symbol => symbol != FbxSymbol && symbol != McpSymbol)
+                .Where(symbol =>
+                    symbol != "BENTO_ENABLE_FBX_EXPORTER" &&
+                    symbol != McpSymbol)
                 .ToList();
-            if (hasFbx) next.Add(FbxSymbol);
             if (hasMcp) next.Add(McpSymbol);
             string serialized = string.Join(";", next);
             string current = string.Join(";", symbols);

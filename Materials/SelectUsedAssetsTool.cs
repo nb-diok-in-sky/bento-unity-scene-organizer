@@ -44,14 +44,6 @@ namespace Bento
             EditorGUILayout.LabelField(
                 $"模型 {_models.Count}　材质 {_materials.Count}　贴图 {_textures.Count}　合计 {allAssets.Length}",
                 EditorStyles.boldLabel);
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                using (new EditorGUI.DisabledScope(allAssets.Length == 0))
-                    if (GUILayout.Button("重新全选全部资产", GUILayout.Height(30)))
-                        Selection.objects = allAssets;
-                if (GUILayout.Button("清空锁定", GUILayout.Height(30)))
-                    Clear();
-            }
 
             _scroll = EditorGUILayout.BeginScrollView(
                 _scroll, EditorStyles.helpBox, GUILayout.MinHeight(260), GUILayout.MaxHeight(600));
@@ -111,14 +103,6 @@ namespace Bento
                 .Where(asset => asset != null)
                 .Distinct()
                 .ToArray();
-        }
-
-        void Clear()
-        {
-            _lockedRoots.Clear();
-            _models.Clear();
-            _materials.Clear();
-            _textures.Clear();
         }
 
         static void Replace<T>(ICollection<T> target, IEnumerable<T> values)

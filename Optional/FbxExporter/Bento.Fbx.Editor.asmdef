@@ -14,8 +14,14 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [
-    "BENTO_ENABLE_FBX_EXPORTER"
+    "BENTO_HAS_FBX_EXPORTER"
   ],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.unity.formats.fbx",
+      "expression": "",
+      "define": "BENTO_HAS_FBX_EXPORTER"
+    }
+  ],
   "noEngineReferences": false
 }
