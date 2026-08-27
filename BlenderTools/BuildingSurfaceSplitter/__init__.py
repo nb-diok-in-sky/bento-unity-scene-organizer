@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Bento Building Surface Splitter",
     "author": "Bento",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Bento",
     "description": "Classify building mesh faces into interior and exterior with interior volumes",
@@ -12,7 +12,7 @@ import bpy
 import bmesh
 import json
 import os
-from math import cos, radians
+from math import cos, radians, sin
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty, StringProperty
 from bpy.types import Operator, Panel, PropertyGroup
 from mathutils import Vector
@@ -22,6 +22,7 @@ from mathutils.bvhtree import BVHTree
 CLASS_ATTRIBUTE = "bento_surface_class"
 RULE_ATTRIBUTE = "bento_surface_rule"
 CUT_FACE_ATTRIBUTE = "bento_horizontal_cut_face"
+VERTICAL_FACE_ATTRIBUTE = "bento_vertical_face_candidate"
 CUT_PREVIEW_NAME = "Bento_HorizontalCutPreview"
 NEW_CUT_EDGE_ATTRIBUTE = "bento_new_cut_edge"
 CUT_PLAN_PROPERTY = "bento_cut_plan"
@@ -116,6 +117,14 @@ def ensure_cut_face_attribute(mesh):
     return attribute or mesh.attributes.new(CUT_FACE_ATTRIBUTE, "INT", "FACE")
 
 
+def ensure_vertical_face_attribute(mesh):
+    attribute = mesh.attributes.get(VERTICAL_FACE_ATTRIBUTE)
+    if attribute and (attribute.domain != "FACE" or attribute.data_type != "INT"):
+        mesh.attributes.remove(attribute)
+        attribute = None
+    return attribute or mesh.attributes.new(VERTICAL_FACE_ATTRIBUTE, "INT", "FACE")
+
+
 def ensure_new_cut_edge_attribute(mesh):
     attribute = mesh.attributes.get(NEW_CUT_EDGE_ATTRIBUTE)
     if attribute and (attribute.domain != "EDGE" or attribute.data_type != "INT"):
@@ -167,6 +176,211 @@ def volume_world_bounds(volume_obj):
     bounds_min = Vector(tuple(min(point[axis] for point in corners) for axis in range(3)))
     bounds_max = Vector(tuple(max(point[axis] for point in corners) for axis in range(3)))
     return bounds_min, bounds_max
+
+
+def volume_vertical_sides(volumes):
+    sides = []
+    for volume in volumes:
+        local_corners = [Vector(corner) for corner in volume.bound_box]
+        if not local_corners:
+            continue
+        min_x = min(point.x for point in local_corners)
+        max_x = max(point.x for point in local_corners)
+        min_y = min(point.y for point in local_corners)
+        max_y = max(point.y for point in local_corners)
+        center_z = sum(point.z for point in local_corners) / len(local_corners)
+        local_outline = (
+            Vector((min_x, min_y, center_z)),
+            Vector((max_x, min_y, center_z)),
+            Vector((max_x, max_y, center_z)),
+            Vector((min_x, max_y, center_z)),
+        )
+        world_outline = [volume.matrix_world @ point for point in local_outline]
+        world_center = volume.matrix_world @ Vector((
+            (min_x + max_x) * 0.5,
+            (min_y + max_y) * 0.5,
+            center_z,
+        ))
+        bounds_min, bounds_max = volume_world_bounds(volume)
+        for side_index, first_value in enumerate(world_outline):
+            second_value = world_outline[(side_index + 1) % len(world_outline)]
+            first = Vector((first_value.x, first_value.y, world_center.z))
+            second = Vector((second_value.x, second_value.y, world_center.z))
+            direction = second - first
+            direction.z = 0.0
+            length = direction.length
+            if length <= 1e-8:
+                continue
+            direction /= length
+            normal = Vector((-direction.y, direction.x, 0.0))
+            midpoint = (first + second) * 0.5
+            center_direction = midpoint - world_center
+            center_direction.z = 0.0
+            if normal.dot(center_direction) < 0.0:
+                normal.negate()
+            sides.append({
+                "volume": volume.name,
+                "side": side_index,
+                "first": first,
+                "second": second,
+                "direction": direction,
+                "normal": normal,
+                "length": length,
+                "floor_z": bounds_min.z,
+                "ceiling_z": bounds_max.z,
+                "center": world_center,
+            })
+    return sides
+
+
+def volume_vertical_corners(sides):
+    corners = []
+    seen = set()
+    for side in sides:
+        point = side["first"]
+        key = (
+            side["volume"],
+            round(point.x, 5),
+            round(point.y, 5),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        outward = point - side["center"]
+        outward.z = 0.0
+        if outward.length_squared > 1e-12:
+            outward.normalize()
+        corners.append({
+            "volume": side["volume"],
+            "point": Vector((point.x, point.y, 0.0)),
+            "outward": outward,
+            "floor_z": side["floor_z"],
+            "ceiling_z": side["ceiling_z"],
+        })
+    return corners
+
+
+def polygon_world_vertices(obj, polygon):
+    return [
+        obj.matrix_world @ obj.data.vertices[index].co
+        for index in polygon.vertices
+    ]
+
+
+def polygon_world_normal(obj, polygon):
+    normal_matrix = obj.matrix_world.to_3x3().inverted_safe().transposed()
+    return (normal_matrix @ polygon.normal).normalized()
+
+
+def is_near_vertical_polygon(obj, polygon, settings):
+    return abs(polygon_world_normal(obj, polygon).z) <= sin(
+        settings.vertical_face_angle
+    )
+
+
+def vertical_face_matches_side(obj, polygon, side, settings):
+    if is_floor_object(obj) or is_roof_object(obj):
+        return False
+    normal = polygon_world_normal(obj, polygon)
+    if abs(normal.z) > sin(settings.vertical_face_angle):
+        return False
+    horizontal_normal = Vector((normal.x, normal.y, 0.0))
+    if horizontal_normal.length_squared <= 1e-12:
+        return False
+    horizontal_normal.normalize()
+    if horizontal_normal.dot(side["normal"]) < cos(settings.vertical_face_angle):
+        return False
+
+    vertices = polygon_world_vertices(obj, polygon)
+    if not vertices:
+        return False
+    tolerance = max(settings.volume_tolerance * 4.0, 0.0005)
+    if (
+        max(vertex.z for vertex in vertices) < side["floor_z"] - tolerance
+        or min(vertex.z for vertex in vertices) > side["ceiling_z"] + tolerance
+    ):
+        return False
+
+    center = obj.matrix_world @ polygon.center
+    outward_distance = (center - side["first"]).dot(side["normal"])
+    if (
+        outward_distance < -tolerance
+        or outward_distance > settings.vertical_face_search_distance + tolerance
+    ):
+        return False
+
+    along_values = [
+        (vertex - side["first"]).dot(side["direction"])
+        for vertex in vertices
+    ]
+    side_margin = max(settings.vertical_corner_radius, tolerance)
+    return not (
+        max(along_values) < -side_margin
+        or min(along_values) > side["length"] + side_margin
+    )
+
+
+def vertical_face_matches_corner(obj, polygon, corner, settings):
+    if is_floor_object(obj) or is_roof_object(obj):
+        return False
+    normal = polygon_world_normal(obj, polygon)
+    if abs(normal.z) > sin(settings.vertical_face_angle):
+        return False
+    center = obj.matrix_world @ polygon.center
+    if (
+        center.z < corner["floor_z"] - settings.volume_tolerance
+        or center.z > corner["ceiling_z"] + settings.volume_tolerance
+    ):
+        return False
+    horizontal_delta = Vector((
+        center.x - corner["point"].x,
+        center.y - corner["point"].y,
+    ))
+    if horizontal_delta.length > settings.vertical_corner_radius:
+        return False
+    horizontal_normal = Vector((normal.x, normal.y, 0.0))
+    if horizontal_normal.length_squared <= 1e-12:
+        return False
+    horizontal_normal.normalize()
+    return horizontal_normal.dot(corner["outward"]) > 0.0
+
+
+def expand_vertical_candidate_islands(obj, seed_indices, settings):
+    if not seed_indices:
+        return set()
+    mesh = obj.data
+    edge_faces = {}
+    for polygon in mesh.polygons:
+        for edge_key in polygon.edge_keys:
+            edge_faces.setdefault(edge_key, []).append(polygon.index)
+    normals = [polygon_world_normal(obj, polygon) for polygon in mesh.polygons]
+    normal_threshold = cos(settings.vertical_face_angle)
+    plane_tolerance = max(settings.volume_tolerance * 8.0, 0.02)
+    selected = set(seed_indices)
+    pending = list(seed_indices)
+    while pending:
+        index = pending.pop()
+        source = mesh.polygons[index]
+        source_normal = normals[index]
+        source_center = obj.matrix_world @ source.center
+        for edge_key in source.edge_keys:
+            for neighbor_index in edge_faces.get(edge_key, ()):
+                if neighbor_index in selected or neighbor_index == index:
+                    continue
+                neighbor = mesh.polygons[neighbor_index]
+                neighbor_normal = normals[neighbor_index]
+                if abs(neighbor_normal.z) > sin(settings.vertical_face_angle):
+                    continue
+                if source_normal.dot(neighbor_normal) < normal_threshold:
+                    continue
+                if neighbor.material_index != source.material_index:
+                    continue
+                neighbor_center = obj.matrix_world @ neighbor.center
+                if abs((neighbor_center - source_center).dot(source_normal)) > plane_tolerance:
+                    continue
+                selected.add(neighbor_index)
+                pending.append(neighbor_index)
+    return selected
 
 
 def build_interior_footprints(targets, volumes, settings):
@@ -783,7 +997,6 @@ def saved_face_templates_for_preview_line(
         along_values = [(vertex - first).dot(direction) for vertex in vertices]
         if max(along_values) < -tolerance or min(along_values) > segment_length + tolerance:
             continue
-        center = obj.matrix_world @ polygon.center
         vertical_min = min(first.z, second.z) - tolerance
         vertical_max = max(first.z, second.z) + tolerance
         polygon_min_z = min(vertex.z for vertex in vertices)
@@ -2048,6 +2261,31 @@ class BentoSurfaceSplitterSettings(PropertyGroup):
         soft_max=2.0,
         unit="LENGTH",
     )
+    vertical_face_angle: FloatProperty(
+        name="竖面角度容差",
+        description="候选面法线相对水平面的最大偏差；用于接受略微倾斜的外墙面",
+        default=radians(12.0),
+        min=0.0,
+        max=radians(45.0),
+        subtype="ANGLE",
+        unit="ROTATION",
+    )
+    vertical_face_search_distance: FloatProperty(
+        name="四边向外搜索距离",
+        description="从室内方块四条边向外寻找同方向外墙面的最大世界空间距离",
+        default=1.0,
+        min=0.0,
+        soft_max=5.0,
+        unit="LENGTH",
+    )
+    vertical_corner_radius: FloatProperty(
+        name="墙角候选半径",
+        description="追加墙角候选时，围绕室内方块四个竖直角线搜索的水平半径",
+        default=0.3,
+        min=0.0,
+        soft_max=2.0,
+        unit="LENGTH",
+    )
     export_path: StringProperty(name="FBX 输出", subtype="FILE_PATH")
     export_after_split: BoolProperty(name="分离后立即导出", default=False)
 
@@ -2459,6 +2697,248 @@ class Bento_OT_select_saved_horizontal_cut_faces(Operator):
             bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
         bpy.ops.mesh.select_mode(type="FACE")
         self.report({"INFO"}, f"当前只显示 {count} 个已保存候选面")
+        return {"FINISHED"}
+
+
+class Bento_OT_preview_vertical_faces(Operator):
+    bl_idname = "bento.preview_vertical_faces"
+    bl_description = "读取室内方块底面四条边，向世界 Z 方向形成四个有限竖面，并计算朝向室外的同方向竖面候选。只改变选择和隐藏状态"
+    bl_label = "计算四边竖面"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        targets = iter_target_objects(context)
+        if not targets:
+            self.report({"ERROR"}, "当前没有可处理的网格对象")
+            return {"CANCELLED"}
+        sides = volume_vertical_sides(iter_volumes(context))
+        if not sides:
+            self.report({"ERROR"}, "没有可用室内方块，请先添加并调整室内方块")
+            return {"CANCELLED"}
+
+        saved_markers = {}
+        for obj in targets:
+            attribute = obj.data.attributes.get(VERTICAL_FACE_ATTRIBUTE)
+            if attribute is not None and len(attribute.data) == len(obj.data.polygons):
+                saved_markers[obj.name] = [
+                    int(value.value) for value in attribute.data
+                ]
+
+        bpy.ops.object.select_all(action="DESELECT")
+        for obj in targets:
+            obj.hide_set(False)
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="EDIT")
+
+        count = 0
+        for obj in context.objects_in_mode_unique_data:
+            bm = bmesh.from_edit_mesh(obj.data)
+            bm.faces.ensure_lookup_table()
+            marker_layer = bm.faces.layers.int.get(VERTICAL_FACE_ATTRIBUTE)
+            saved_values = saved_markers.get(obj.name)
+            if saved_values is not None:
+                if marker_layer is None:
+                    marker_layer = bm.faces.layers.int.new(VERTICAL_FACE_ATTRIBUTE)
+                for face in bm.faces:
+                    if face.index < len(saved_values):
+                        face[marker_layer] = saved_values[face.index]
+
+            seed_indices = {
+                face.index
+                for face in bm.faces
+                if any(
+                    vertical_face_matches_side(
+                        obj,
+                        obj.data.polygons[face.index],
+                        side,
+                        context.scene.bento_surface_splitter,
+                    )
+                    for side in sides
+                )
+            }
+            candidate_indices = expand_vertical_candidate_islands(
+                obj,
+                seed_indices,
+                context.scene.bento_surface_splitter,
+            )
+            for face in bm.faces:
+                is_candidate = face.index in candidate_indices
+                face.select = is_candidate
+                face.hide_set(not is_candidate)
+                if is_candidate:
+                    count += 1
+            bmesh.update_edit_mesh(
+                obj.data,
+                loop_triangles=False,
+                destructive=False,
+            )
+        bpy.ops.mesh.select_mode(type="FACE")
+        self.report({"INFO"}, f"已按室内方块四条边隔离 {count} 个室外竖面候选")
+        return {"FINISHED"}
+
+
+class Bento_OT_add_vertical_corner_faces(Operator):
+    bl_idname = "bento.add_vertical_corner_faces"
+    bl_description = "保留当前选择，并把室内方块四个竖直角线附近、朝向室外的竖面追加到选择。用于单独处理墙角构件"
+    bl_label = "追加墙角候选"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "EDIT_MESH":
+            self.report({"ERROR"}, "请先点击“计算四边竖面”进入网格编辑模式")
+            return {"CANCELLED"}
+        sides = volume_vertical_sides(iter_volumes(context))
+        corners = volume_vertical_corners(sides)
+        if not corners:
+            self.report({"ERROR"}, "没有可用室内方块")
+            return {"CANCELLED"}
+        settings = context.scene.bento_surface_splitter
+        added = 0
+        for obj in context.objects_in_mode_unique_data:
+            bm = bmesh.from_edit_mesh(obj.data)
+            bm.faces.ensure_lookup_table()
+            seed_indices = {
+                face.index
+                for face in bm.faces
+                if any(
+                    vertical_face_matches_corner(
+                        obj,
+                        obj.data.polygons[face.index],
+                        corner,
+                        settings,
+                    )
+                    for corner in corners
+                )
+            }
+            candidate_indices = expand_vertical_candidate_islands(
+                obj,
+                seed_indices,
+                settings,
+            )
+            for face in bm.faces:
+                if face.index not in candidate_indices:
+                    continue
+                if not face.select:
+                    added += 1
+                face.hide_set(False)
+                face.select = True
+            bmesh.update_edit_mesh(
+                obj.data,
+                loop_triangles=False,
+                destructive=False,
+            )
+        self.report({"INFO"}, f"已追加 {added} 个墙角竖面候选")
+        return {"FINISHED"}
+
+
+class Bento_OT_reveal_vertical_faces(Operator):
+    bl_idname = "bento.reveal_vertical_faces_keep_selection"
+    bl_description = "保留当前已选面，同时恢复显示其他近似竖直面，方便人工增减。不会保存候选标记"
+    bl_label = "保留选择并恢复竖面"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "EDIT_MESH":
+            self.report({"ERROR"}, "请先进入网格编辑模式")
+            return {"CANCELLED"}
+        settings = context.scene.bento_surface_splitter
+        revealed = 0
+        for obj in context.objects_in_mode_unique_data:
+            bm = bmesh.from_edit_mesh(obj.data)
+            bm.faces.ensure_lookup_table()
+            for face in bm.faces:
+                polygon = obj.data.polygons[face.index]
+                should_reveal = (
+                    is_near_vertical_polygon(obj, polygon, settings)
+                    and not is_floor_object(obj)
+                    and not is_roof_object(obj)
+                )
+                if should_reveal and face.hide:
+                    face.hide_set(False)
+                    revealed += 1
+            bmesh.update_edit_mesh(
+                obj.data,
+                loop_triangles=False,
+                destructive=False,
+            )
+        self.report({"INFO"}, f"已保留当前选择并恢复 {revealed} 个近似竖面")
+        return {"FINISHED"}
+
+
+class Bento_OT_save_vertical_faces(Operator):
+    bl_idname = "bento.save_vertical_faces"
+    bl_description = "用当前选中的面完整覆盖竖面候选标记；不会覆盖横面切线候选"
+    bl_label = "保存当前竖面选择"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "EDIT_MESH":
+            self.report({"ERROR"}, "请先进入网格编辑模式并选择竖面")
+            return {"CANCELLED"}
+        count = 0
+        for obj in context.objects_in_mode_unique_data:
+            bm = bmesh.from_edit_mesh(obj.data)
+            bm.faces.ensure_lookup_table()
+            layer = bm.faces.layers.int.get(VERTICAL_FACE_ATTRIBUTE)
+            if layer is None:
+                layer = bm.faces.layers.int.new(VERTICAL_FACE_ATTRIBUTE)
+            for face in bm.faces:
+                face[layer] = 1 if face.select else 0
+                if face.select:
+                    count += 1
+            bmesh.update_edit_mesh(
+                obj.data,
+                loop_triangles=False,
+                destructive=False,
+            )
+        self.report({"INFO"}, f"已保存 {count} 个室外竖面候选；横面候选保持不变")
+        return {"FINISHED"}
+
+
+class Bento_OT_select_saved_vertical_faces(Operator):
+    bl_idname = "bento.select_saved_vertical_faces"
+    bl_description = "只显示并选择已保存的竖面候选；只读取独立竖面标记"
+    bl_label = "只看已保存竖面"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        targets = iter_target_objects(context)
+        bpy.ops.object.select_all(action="DESELECT")
+        saved_objects = [
+            obj for obj in targets
+            if obj.data.attributes.get(VERTICAL_FACE_ATTRIBUTE) is not None
+        ]
+        if not saved_objects:
+            self.report({"WARNING"}, "没有已保存的竖面候选")
+            return {"CANCELLED"}
+        for obj in saved_objects:
+            obj.hide_set(False)
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="EDIT")
+        count = 0
+        for obj in context.objects_in_mode_unique_data:
+            bm = bmesh.from_edit_mesh(obj.data)
+            bm.faces.ensure_lookup_table()
+            layer = bm.faces.layers.int.get(VERTICAL_FACE_ATTRIBUTE)
+            for face in bm.faces:
+                is_saved = layer is not None and bool(face[layer])
+                face.select = is_saved
+                face.hide_set(not is_saved)
+                if is_saved:
+                    count += 1
+            bmesh.update_edit_mesh(
+                obj.data,
+                loop_triangles=False,
+                destructive=False,
+            )
+        bpy.ops.mesh.select_mode(type="FACE")
+        self.report({"INFO"}, f"当前只显示 {count} 个已保存竖面候选")
         return {"FINISHED"}
 
 
@@ -3161,14 +3641,32 @@ class Bento_PT_surface_splitter(Panel):
         box.operator("bento.restore_cut_edges_display", text="恢复完整网格显示")
 
         box = layout.box()
-        box.label(text="4. 自动分类")
+        box.label(text="4. 室外竖面候选")
+        box.label(text="室内方块底面四条边 → 四个有限竖面", icon="INFO")
+        box.label(text="计算建议 → 手工增减 → 保存；墙角单独追加")
+        box.prop(settings, "vertical_face_angle")
+        box.prop(settings, "vertical_face_search_distance")
+        box.prop(settings, "vertical_corner_radius")
+        row = box.row(align=True)
+        row.operator("bento.preview_vertical_faces", text="计算四边竖面")
+        row.operator(
+            "bento.reveal_vertical_faces_keep_selection",
+            text="保留选择并恢复竖面",
+        )
+        box.operator("bento.add_vertical_corner_faces", text="追加墙角候选")
+        row = box.row(align=True)
+        row.operator("bento.save_vertical_faces", text="保存当前选择")
+        row.operator("bento.select_saved_vertical_faces", text="只看已保存竖面")
+
+        box = layout.box()
+        box.label(text="5. 自动分类")
         box.prop(settings, "upward_normal_threshold")
         box.prop(settings, "surface_probe_distance")
         box.prop(settings, "volume_tolerance")
         box.operator("bento.classify_building_surfaces", icon="MOD_BUILD")
 
         box = layout.box()
-        box.label(text="5. 查看分类结果")
+        box.label(text="6. 查看分类结果")
         row = box.row(align=True)
         op = row.operator("bento.select_surface_class", text="选择室内面")
         op.class_value = "1"
@@ -3177,7 +3675,7 @@ class Bento_PT_surface_splitter(Panel):
         box.label(text="这里只读取面上的分类标记", icon="INFO")
 
         box = layout.box()
-        box.label(text="6. 手动修补")
+        box.label(text="7. 手动修补")
         box.label(text="先增减面选择，再保存当前选中面", icon="INFO")
         row = box.row(align=True)
         op = row.operator("bento.assign_surface_class", text="保留选中面为室内")
@@ -3191,7 +3689,7 @@ class Bento_PT_surface_splitter(Panel):
         op.class_value = "2"
 
         box = layout.box()
-        box.label(text="7. 生成分类对象与导出")
+        box.label(text="8. 生成分类对象与导出")
         box.label(text="可选阴影修复")
         box.operator(
             "bento.auto_smooth_selected",
@@ -3287,6 +3785,11 @@ CLASSES = (
     Bento_OT_save_horizontal_cut_faces,
     Bento_OT_reveal_horizontal_faces,
     Bento_OT_select_saved_horizontal_cut_faces,
+    Bento_OT_preview_vertical_faces,
+    Bento_OT_add_vertical_corner_faces,
+    Bento_OT_reveal_vertical_faces,
+    Bento_OT_save_vertical_faces,
+    Bento_OT_select_saved_vertical_faces,
     Bento_OT_create_cut_preview,
     Bento_OT_clear_cut_preview,
     Bento_OT_toggle_cut_preview,

@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "bento_building_surface_splitter"
-version = "0.1.0"
+version = "0.2.0"
 name = "Bento Building Surface Splitter"
 tagline = "Classify building surfaces into interior and exterior"
 maintainer = "Bento"
