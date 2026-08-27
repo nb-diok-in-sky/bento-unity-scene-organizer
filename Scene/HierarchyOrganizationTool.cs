@@ -109,9 +109,9 @@ namespace Bento
             int count = selected.Length;
 
             EditorGUILayout.Space(14);
-            EditorGUILayout.LabelField("低频操作：选中对象启用状态", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("低频操作：选中对象批量状态", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "控制 Inspector 顶部的 Active 勾选框，不是 Hierarchy 的眼睛。支持多选，并可用一次 Ctrl+Z 撤销。",
+                "对象启用控制 Inspector 顶部的 Active 勾选框；LOD 操作会递归处理选中对象及其子物体。禁用 LOD 时先固定显示 LOD0，避免远近切换。全部操作支持一次 Ctrl+Z 撤销。",
                 MessageType.Info);
 
             using (new EditorGUI.DisabledScope(count == 0))
@@ -122,12 +122,32 @@ namespace Bento
                 if (GUILayout.Button($"启用选中对象（{count}）", GUILayout.Height(30)))
                     RunActivationCommand(true);
             }
+
+            LODGroup[] lodGroups = SceneLodGroupBatchService.GetSelectedLodGroups();
+            int lodCount = lodGroups.Length;
+            using (new EditorGUI.DisabledScope(lodCount == 0))
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button($"禁用 LOD、固定 LOD0（{lodCount}）", GUILayout.Height(30)))
+                    RunLodCommand(false);
+                if (GUILayout.Button($"重新启用 LOD（{lodCount}）", GUILayout.Height(30)))
+                    RunLodCommand(true);
+            }
         }
 
         static void RunActivationCommand(bool active)
         {
             int changed = SceneObjectActivationService.SetSelectedActive(active);
             Debug.Log($"[Bento] 已{(active ? "启用" : "禁用")} {changed} 个场景对象，可使用 Ctrl+Z 撤销。");
+        }
+
+        static void RunLodCommand(bool enabled)
+        {
+            int changed = SceneLodGroupBatchService.SetSelectedLodEnabled(enabled);
+            Debug.Log(
+                enabled
+                    ? $"[Bento] 已重新启用 {changed} 个 LODGroup，可使用 Ctrl+Z 撤销。"
+                    : $"[Bento] 已禁用 {changed} 个 LODGroup，并固定显示 LOD0，可使用 Ctrl+Z 撤销。");
         }
 
         void DrawQuickParenting()

@@ -62,6 +62,8 @@ namespace Bento
             var options = new SceneGeometryScanOptions
             {
                 scope = ReadGeometryScope(parameters?["scope"]?.ToString()),
+                firstLayer = parameters?["first_layer"]?.Value<int?>() ?? 0,
+                secondLayer = parameters?["second_layer"]?.Value<int?>() ?? 1,
                 includeInactive = parameters?["include_inactive"]?.Value<bool?>() ?? false,
                 ignoreSameHierarchy = parameters?["ignore_same_hierarchy"]?.Value<bool?>() ?? true,
                 includeBoundsOnlyCandidates = parameters?["include_bounds_candidates"]?.Value<bool?>() ?? true,
@@ -117,6 +119,10 @@ namespace Bento
         {
             switch ((value ?? string.Empty).Trim().ToLowerInvariant())
             {
+                case "layers":
+                case "between_layers":
+                case "pair":
+                    return SceneGeometryScanScope.BetweenLayers;
                 case "selection":
                 case "selection_only":
                     return SceneGeometryScanScope.SelectionOnly;

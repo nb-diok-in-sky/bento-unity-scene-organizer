@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace Bento
@@ -28,10 +29,12 @@ namespace Bento
     {
         public string name = "默认预设";
         public bool copyPrefab = true;
+        public bool copyModels;
         public bool copyMaterials = true;
         public bool copyTextures;
         public bool replaceSceneObjects = true;
         public string prefabFolder = "Assets/Variants/Prefabs";
+        public string modelFolder = "Assets/Variants/Models";
         public string materialFolder = "Assets/Variants/Materials";
         public string textureFolder = "Assets/Variants/Textures";
         public string prefix = "";
@@ -75,10 +78,12 @@ namespace Bento
         {
             if (other == null) return false;
             return copyPrefab == other.copyPrefab &&
+                   copyModels == other.copyModels &&
                    copyMaterials == other.copyMaterials &&
                    copyTextures == other.copyTextures &&
                    replaceSceneObjects == other.replaceSceneObjects &&
                    string.Equals(prefabFolder, other.prefabFolder, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(modelFolder, other.modelFolder, StringComparison.OrdinalIgnoreCase) &&
                    string.Equals(materialFolder, other.materialFolder, StringComparison.OrdinalIgnoreCase) &&
                    string.Equals(textureFolder, other.textureFolder, StringComparison.OrdinalIgnoreCase) &&
                    string.Equals(prefix, other.prefix, StringComparison.Ordinal) &&
@@ -124,6 +129,7 @@ namespace Bento
         public string generatedPrefabPath;
         public string presetName;
         public string generatedAtUtc;
+        public List<string> modelPaths = new List<string>();
         public List<string> materialPaths = new List<string>();
         public List<string> texturePaths = new List<string>();
     }
@@ -155,12 +161,22 @@ namespace Bento
         public readonly List<ResourceVariantTexturePlan> textures = new List<ResourceVariantTexturePlan>();
     }
 
+    class ResourceVariantModelPlan
+    {
+        public UnityEngine.Object source;
+        public string sourcePath;
+        public bool willCopy;
+        public string reason;
+    }
+
     class ResourceVariantObjectPlan
     {
         public GameObject sourceObject;
+        public readonly List<GameObject> sourceObjects = new List<GameObject>();
         public string sourceAssetPath;
         public string prefabOutputName;
         public int namingIndex;
+        public readonly List<ResourceVariantModelPlan> models = new List<ResourceVariantModelPlan>();
         public readonly List<ResourceVariantMaterialPlan> materials = new List<ResourceVariantMaterialPlan>();
     }
 
@@ -170,8 +186,16 @@ namespace Bento
         public readonly List<ResourceVariantObjectPlan> objects = new List<ResourceVariantObjectPlan>();
         public readonly List<string> warnings = new List<string>();
 
+        public int ModelCopyCount => objects
+            .SelectMany(item => item.models)
+            .Where(item => item.willCopy)
+            .Select(item => item.sourcePath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
         public int MaterialCopyCount => CountUniqueMaterials(plan => plan.willCopy);
         public int TextureCopyCount => CountUniqueTextures(plan => plan.willCopy);
+        public int SelectedInstanceCount => objects.Sum(item =>
+            item.sourceObjects.Count > 0 ? item.sourceObjects.Count : 1);
 
         int CountUniqueMaterials(Func<ResourceVariantMaterialPlan, bool> predicate)
         {
@@ -203,6 +227,7 @@ namespace Bento
     {
         public readonly List<string> createdAssets = new List<string>();
         public readonly List<string> createdPrefabs = new List<string>();
+        public readonly List<string> createdModels = new List<string>();
         public readonly List<string> createdMaterials = new List<string>();
         public readonly List<string> createdTextures = new List<string>();
         public readonly List<GameObject> replacements = new List<GameObject>();

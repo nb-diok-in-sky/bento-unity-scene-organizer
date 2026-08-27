@@ -33,6 +33,13 @@ namespace Bento
             EditorPrefs.SetString(SourceRecordKey, JsonUtility.ToJson(records));
         }
 
+        public ResourceVariantSourceRecordList LoadSourceRecords()
+        {
+            var records = LoadJson(SourceRecordKey, new ResourceVariantSourceRecordList(), "资源变体来源记录");
+            records.items = records.items ?? new List<ResourceVariantSourceRecord>();
+            return records;
+        }
+
         public void RemoveSourceRecords(ISet<string> prefabPaths)
         {
             var records = LoadJson(SourceRecordKey, new ResourceVariantSourceRecordList(), "资源变体来源记录");

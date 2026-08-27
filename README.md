@@ -11,9 +11,12 @@
 - Hierarchy 预制体替换与批量重命名
 - 场景资源变体生成，复制并重新绑定材质和贴图
 - Project 资产安全移动、重命名、GUID 验证和失败回滚
-- 文件夹收藏与只读引用审计
+- 文件夹收藏、Hierarchy 一键折叠与只读引用审计
 - 从选中模型收集模型、材质和贴图，并按三类独立命名后安全移动
 - Terrain 当前绘制层贴图的独立选择入口，避免混入普通模型资产
+- 资源变体自动识别 Model、Prefab、Material、Texture 输出目录，并复制重连实际引用资源
+- 场景穿模审查、LOD 批量关闭、物体显隐和材质使用对象定位
+- 批量切换模型 Generate Lightmap UVs，并通过动态光池/静态光池安全启动烘焙
 - 根据 Hierarchy 或 Project 当前选择生成对应的 Bento 智能右键菜单
 - 可选 MCP 只读分析接口
 - 从 Unity 中选中 FBX，一键启动 Blender 并加载建筑内外墙拆分插件
@@ -28,7 +31,8 @@ Unity C# 编译，也不会要求只使用 Unity 工具的使用者安装 Blende
 Blender 路径保存在本机 `EditorPrefs`，不会提交到 Git。
 
 插件使用一个或多个不可穿墙的室内方块辅助区分内墙、外墙和双层窗户纸，
-支持检查选中分类面、手工修正、按自定义名称分离，并导出新的 FBX。
+支持检查选中分类面、手工修正、按室内方块四边计算室外竖面候选、
+按自定义名称分离，并导出新的 FBX。
 详细步骤见 `BlenderTools/BuildingSurfaceSplitter/README.md`。
 
 ## 在 Unity 项目中使用

@@ -216,7 +216,7 @@ namespace Bento
                 Save();
         }
 
-        void Save() => _store.Save(_data);
+        void Save() => ProjectFolderFavorites.Save(_data);
     }
 
     sealed class ProjectFolderFavoriteStore
@@ -244,5 +244,36 @@ namespace Bento
         }
 
         public void Save(ProjectFolderFavoriteList data) => EditorPrefs.SetString(_key, JsonUtility.ToJson(data));
+    }
+
+    static class ProjectFolderFavorites
+    {
+        public static event Action Changed;
+
+        public static ProjectFolderFavoriteList Load() => new ProjectFolderFavoriteStore().Load();
+
+        public static void Save(ProjectFolderFavoriteList data)
+        {
+            new ProjectFolderFavoriteStore().Save(data);
+            Changed?.Invoke();
+        }
+
+        public static bool Add(ProjectFolderFavoriteList data, string path)
+        {
+            if (data == null || !AssetDatabase.IsValidFolder(path))
+                return false;
+            if (data.items.Any(item =>
+                    item != null &&
+                    string.Equals(item.path, path, StringComparison.OrdinalIgnoreCase)))
+                return false;
+
+            data.items.Add(new ProjectFolderFavorite
+            {
+                path = path,
+                alias = System.IO.Path.GetFileName(path)
+            });
+            Save(data);
+            return true;
+        }
     }
 }

@@ -16,6 +16,9 @@ namespace Bento
                 return VariantTextureDisposition.RuntimeInternal;
 
             string semantic = $"{propertyName} {propertyDescription}";
+            if (false && IsTerrainSupportProperty(propertyName))
+                return VariantTextureDisposition.SharedShaderSupport;
+
             if (ContainsAny(semantic,
                 return VariantTextureDisposition.SharedShaderSupport;
 
@@ -81,5 +84,10 @@ namespace Bento
             return false;
         }
 
+
+        static bool IsTerrainSupportProperty(string propertyName)
+        {
+            return !string.IsNullOrEmpty(propertyName) &&
+        }
     }
 }

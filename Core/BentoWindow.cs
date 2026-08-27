@@ -28,6 +28,7 @@ namespace Bento
         GUIStyle _groupStyle;
         GUIStyle _pageStyle;
         GUIStyle _popupStyle;
+        ProjectFolderFavoritesSidebar _folderSidebar;
 
         [MenuItem("Tools/Bento/工具箱", priority = -10000)]
         static void Open() => OpenPage(null);
@@ -66,7 +67,12 @@ namespace Bento
         }
 
         void OnEnable() => BuildPages();
-        void OnDisable() => NotifyLifecycle(_activePage, lifecycle => lifecycle.OnDeactivated(), "停用");
+        void OnDisable()
+        {
+            NotifyLifecycle(_activePage, lifecycle => lifecycle.OnDeactivated(), "停用");
+            _folderSidebar?.Dispose();
+            _folderSidebar = null;
+        }
         void OnSelectionChange()
         {
             NotifyLifecycle(_activePage, lifecycle => lifecycle.OnSelectionChanged(), "响应选中变化");
@@ -76,12 +82,18 @@ namespace Bento
         void OnGUI()
         {
             EnsurePages();
+            EnsureFolderSidebar();
             bool compact = position.width < CompactWidth;
             if (compact)
             {
                 DrawCompactNavigation();
                 EditorGUILayout.Space(4);
-                DrawCurrentPage();
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    DrawCurrentPage();
+                    if (_folderSidebar.Visible)
+                        _folderSidebar.Draw();
+                }
             }
             else
             {
@@ -89,6 +101,8 @@ namespace Bento
                 {
                     DrawNavigation();
                     DrawCurrentPage();
+                    if (_folderSidebar.Visible)
+                        _folderSidebar.Draw();
                 }
             }
         }
@@ -101,6 +115,12 @@ namespace Bento
                 {
                     EditorGUILayout.LabelField(CurrentPageName, TitleStyle, GUILayout.Height(28));
                     GUILayout.FlexibleSpace();
+                    if (!_folderSidebar.Visible &&
+                        GUILayout.Button(
+                            new GUIContent("📁", "显示文件夹收藏栏"),
+                            GUILayout.Width(36),
+                            GUILayout.Height(28)))
+                        _folderSidebar.Visible = true;
                     DrawFavoriteButton(_activePage, GUILayout.Width(42), GUILayout.Height(28));
                 }
                 EditorGUILayout.Space(8);
@@ -187,6 +207,12 @@ namespace Bento
         void EnsurePages()
         {
             if (_pages == null || _pages.Count == 0) BuildPages();
+        }
+
+        void EnsureFolderSidebar()
+        {
+            if (_folderSidebar == null)
+                _folderSidebar = new ProjectFolderFavoritesSidebar();
         }
 
         void DrawNavigation()

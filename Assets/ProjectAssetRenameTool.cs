@@ -8,12 +8,25 @@ namespace Bento
 {
     sealed class ProjectAssetRenameTool
     {
+        enum ProjectRenameMode
+        {
+            ReplaceName,
+            AddAffixes
+        }
+
+        static readonly string[] RenameModeLabels =
+        {
+            "统一替换名称",
+            "保留原名并增加前后缀"
+        };
+
         readonly AssetNamingOptions _naming = new AssetNamingOptions { appendNumber = true };
         readonly List<UnityEngine.Object> _sources = new List<UnityEngine.Object>();
         readonly List<AssetRenameEntry> _plan = new List<AssetRenameEntry>();
         Vector2 _scroll;
         AssetRenameHistory _lastHistory;
-        bool _addPrefixSuffixOnly;
+        ProjectRenameMode _renameMode;
+        string _completedSelectionSignature = string.Empty;
 
         public void Draw()
         {
@@ -39,12 +52,26 @@ namespace Bento
                 EditorGUILayout.LabelField($"当前 Project 选择：{_sources.Count} 个资产", EditorStyles.boldLabel);
             else
                 DrawSources();
+            if (automaticMode && !string.IsNullOrEmpty(_completedSelectionSignature))
+                DrawCompletedSelectionNotice();
             EditorGUI.BeginChangeCheck();
-            _addPrefixSuffixOnly = EditorGUILayout.ToggleLeft(
-                new GUIContent("单独增加前后缀", "保留每个 Project 资产当前名称，只统一添加前缀、后缀和可选编号。"),
-                _addPrefixSuffixOnly);
-            using (new EditorGUI.DisabledScope(_addPrefixSuffixOnly))
+            _renameMode = (ProjectRenameMode)EditorGUILayout.Popup(
+                "命名方式",
+                (int)_renameMode,
+                RenameModeLabels);
+            if (_renameMode == ProjectRenameMode.ReplaceName)
+            {
                 _naming.baseName = EditorGUILayout.TextField("统一基础名称", _naming.baseName);
+                EditorGUILayout.LabelField(
+                    "输出结构：前缀 + 统一基础名称 + 编号 + 后缀",
+                    EditorStyles.wordWrappedMiniLabel);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "该模式会完整保留资产当前名称；再次执行会继续叠加前后缀和编号。",
+                    MessageType.Warning);
+            }
             BentoGUI.DrawNamingAffixesAndNumbering(_naming);
             if (EditorGUI.EndChangeCheck() && _sources.Count > 0) RebuildPlan();
             DrawPlan();
@@ -55,6 +82,15 @@ namespace Bento
         {
             var current = ProjectSelection.CurrentAssets.Where(IsSupported)
                 .OrderBy(AssetDatabase.GetAssetPath, StringComparer.OrdinalIgnoreCase).ToList();
+            string currentSignature = BuildSelectionSignature(current);
+            if (_sources.Count == 0 &&
+                !string.IsNullOrEmpty(_completedSelectionSignature) &&
+                string.Equals(currentSignature, _completedSelectionSignature, StringComparison.Ordinal))
+                return;
+
+            if (!string.Equals(currentSignature, _completedSelectionSignature, StringComparison.Ordinal))
+                _completedSelectionSignature = string.Empty;
+
             var currentPaths = current.Select(AssetDatabase.GetAssetPath).ToArray();
             var sourcePaths = _sources.Select(AssetDatabase.GetAssetPath).ToArray();
             if (currentPaths.SequenceEqual(sourcePaths, StringComparer.OrdinalIgnoreCase)) return;
@@ -112,7 +148,7 @@ namespace Bento
 
         AssetNamingOptions BuildNamingOptions()
         {
-            if (!_addPrefixSuffixOnly) return _naming;
+            if (_renameMode == ProjectRenameMode.ReplaceName) return _naming;
             return new AssetNamingOptions
             {
                 prefix = _naming.prefix,
@@ -143,7 +179,14 @@ namespace Bento
         void DrawActions()
         {
             int count = _plan.Count(entry => entry.include);
-            bool valid = count > 0 && _plan.Where(entry => entry.include).All(entry => string.IsNullOrEmpty(entry.warning));
+            bool missingBaseName = _renameMode == ProjectRenameMode.ReplaceName &&
+                                   string.IsNullOrWhiteSpace(_naming.baseName);
+            if (missingBaseName)
+                EditorGUILayout.HelpBox("统一替换名称模式必须填写统一基础名称。", MessageType.Warning);
+
+            bool valid = !missingBaseName &&
+                         count > 0 &&
+                         _plan.Where(entry => entry.include).All(entry => string.IsNullOrEmpty(entry.warning));
             using (new EditorGUI.DisabledScope(!valid))
             {
                 if (GUILayout.Button($"确认重命名 {count} 个资产", GUILayout.Height(38)) && BentoCommand.Confirm(
@@ -158,6 +201,7 @@ namespace Bento
 
         void Execute()
         {
+            string executedSelectionSignature = BuildSelectionSignature(_sources);
             BentoCommand.Run("资产重命名失败", () =>
             {
                 _lastHistory = new AssetRenameHistory();
@@ -166,6 +210,7 @@ namespace Bento
                 bool historySaved = AssetOperationHistory.TryRecord(record, out string historyWarning);
                 _sources.Clear();
                 _plan.Clear();
+                _completedSelectionSignature = executedSelectionSignature;
                 EditorUtility.DisplayDialog(
                     "重命名完成",
                     $"已安全重命名 {_lastHistory.renames.Count} 个资产，GUID 验证通过。" +
@@ -181,6 +226,7 @@ namespace Bento
                 SafeAssetRenameService.Restore(_lastHistory);
                 EditorUtility.DisplayDialog("恢复完成", "上次资产重命名已按 GUID 恢复。", "确定");
                 _lastHistory = null;
+                _completedSelectionSignature = string.Empty;
             });
         }
 
@@ -197,8 +243,32 @@ namespace Bento
         static void Ping(string path)
         {
             var asset = AssetDatabase.LoadMainAssetAtPath(path);
-            Selection.activeObject = asset;
-            EditorGUIUtility.PingObject(asset);
+            if (asset != null)
+                EditorGUIUtility.PingObject(asset);
+        }
+
+        void DrawCompletedSelectionNotice()
+        {
+            EditorGUILayout.HelpBox(
+                "这批资产刚刚重命名完成，已暂停自动重新载入，防止同一规则再次叠加。",
+                MessageType.Info);
+            if (GUILayout.Button("重新载入当前 Project 选择"))
+            {
+                _completedSelectionSignature = string.Empty;
+                RefreshFromSelection();
+            }
+        }
+
+        static string BuildSelectionSignature(IEnumerable<UnityEngine.Object> assets)
+        {
+            return string.Join(
+                "|",
+                assets.Where(asset => asset != null)
+                    .Select(AssetDatabase.GetAssetPath)
+                    .Where(path => !string.IsNullOrEmpty(path))
+                    .Select(AssetDatabase.AssetPathToGUID)
+                    .Where(guid => !string.IsNullOrEmpty(guid))
+                    .OrderBy(guid => guid, StringComparer.OrdinalIgnoreCase));
         }
     }
 }
