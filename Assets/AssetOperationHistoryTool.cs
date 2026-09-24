@@ -15,7 +15,7 @@ namespace Bento
         {
             EditorGUILayout.LabelField("资产操作历史", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "历史保存在本机 Library/Bento，不会上传 Git。当前支持按 GUID 恢复资产移动和 Project 资产重命名。",
+                "历史保存在本机 Library/Bento，不会上传版本控制系统。当前支持按 GUID 恢复资产移动和 Project 资产重命名。",
                 MessageType.Info);
 
             if (GUILayout.Button("刷新历史")) Refresh();

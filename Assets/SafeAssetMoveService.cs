@@ -10,7 +10,6 @@ namespace Bento
             new IAssetMoveRule[]
             {
                 new AssetMovePathRule(),
-                new AssetMoveRepositoryBoundaryRule(),
                 new AssetMoveModelMaterialRule(),
                 new AssetMoveAddressablesRule(new ReflectionAddressableAssetPathInspector())
             },

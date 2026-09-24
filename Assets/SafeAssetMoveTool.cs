@@ -106,7 +106,7 @@ namespace Bento
             {
                 if (GUILayout.Button("确认并安全移动勾选资源", GUILayout.Height(38)) && BentoCommand.Confirm(
                     "确认移动 Project 资源",
-                    $"将移动 {_plan.Count(entry => entry.include)} 个资源。\n使用 AssetDatabase.MoveAsset 并验证 GUID 不变。\n\n移动后请提交对应 Git move 状态。",
+                    $"将移动 {_plan.Count(entry => entry.include)} 个资源。\n使用 AssetDatabase.MoveAsset 并验证 GUID 不变。\n\n移动后请按你的版本控制流程提交对应状态。",
                     "开始移动"))
                 {
                     ExecuteMove();
@@ -115,7 +115,6 @@ namespace Bento
 
             using (new EditorGUI.DisabledScope(_lastHistory == null || _lastHistory.moves.Count == 0))
             {
-
                 if (GUILayout.Button("反向恢复上次移动") && BentoCommand.Confirm(
                     "恢复上次移动",
                     "将按 GUID 把上次移动的资源恢复到原路径。确定继续吗？",

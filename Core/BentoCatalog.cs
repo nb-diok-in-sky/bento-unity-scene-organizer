@@ -23,7 +23,7 @@ namespace Bento
                 Page("整理", "hierarchy_organization", "Hierarchy 整理", new HierarchyOrganizationTool(), tool => tool.Draw()),
                 Page("整理", "scene_light_batch", "场景光源批处理", new SceneLightBatchTool(), tool => tool.Draw()),
                 Page("整理", "scene_renderer_shadow", "场景物体阴影", new SceneRendererShadowBatchTool(), tool => tool.Draw()),
-                Page("整理", "geometry_intersections", "几何相交审查", new SceneGeometryIntersectionTool(), tool => tool.Draw()),
+                Page("整理", "geometry_intersections", "几何相交审查（未完工）", new SceneGeometryIntersectionTool(), tool => tool.Draw()),
 
                 Page("资源、模型和预制体", "model_import_workflow", "模型导入", new ModelImportWorkflowTool(), tool => tool.Draw()),
                 Page("资源、模型和预制体", "resource_variant", "资源变体", new ResourceVariantTool(), tool => tool.Draw()),

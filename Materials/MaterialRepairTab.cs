@@ -24,7 +24,6 @@ namespace Bento
         List<MaterialRepairEntry> _entries = new List<MaterialRepairEntry>();
         Vector2 _scroll;
         bool _scanned;
-
         public void Draw()
         {
             EditorGUILayout.LabelField("URP 材质修复", EditorStyles.boldLabel);

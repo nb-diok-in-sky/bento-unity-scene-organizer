@@ -44,7 +44,6 @@ namespace Bento
 
     public static class ObjToFbxConversionService
     {
-
         public static ObjToFbxConversionResult Convert(ObjToFbxConversionRequest request)
         {
             Validate(request);
@@ -122,6 +121,8 @@ namespace Bento
             string materialFolder,
             ObjToFbxConversionResult conversion)
         {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) throw new InvalidOperationException("找不到 Universal Render Pipeline/Lit Shader。");
             string sourceFolder = Path.GetDirectoryName(mtlAssetPath)?.Replace('\\', '/');
             var result = new Dictionary<string, Material>(StringComparer.OrdinalIgnoreCase);
             foreach (ObjMaterialDefinition definition in definitions)
@@ -129,12 +130,8 @@ namespace Bento
                 string path = AssetDatabase.GenerateUniqueAssetPath(
                     $"{materialFolder.TrimEnd('/')}/{BentoUtility.SanitizeFileName(definition.name, "Material")}.mat");
                 var material = new Material(shader) { name = Path.GetFileNameWithoutExtension(path) };
-
-                string maskPath = AssetDatabase.GetAssetPath(mask);
-                if (!string.IsNullOrEmpty(maskPath)) conversion.createdAssetPaths.Add(maskPath);
-                if (definition.opacity < 0.999f)
-                {
-                }
+                SetTexture(material, "_BaseMap", LoadTexture(sourceFolder, definition.albedoFile));
+                SetTexture(material, "_BumpMap", LoadTexture(sourceFolder, definition.normalFile));
                 AssetDatabase.CreateAsset(material, path);
                 conversion.createdAssetPaths.Add(path);
                 result[definition.name] = material;
@@ -147,11 +144,6 @@ namespace Bento
         {
             if (string.IsNullOrEmpty(file)) return null;
             return AssetDatabase.LoadAssetAtPath<Texture>($"{folder}/{file}".Replace("//", "/"));
-        }
-
-        static string BuildTexturePath(string folder, string file)
-        {
-            return string.IsNullOrEmpty(file) ? string.Empty : $"{folder}/{file}".Replace("//", "/");
         }
 
         static void SetTexture(Material material, string property, Texture texture)

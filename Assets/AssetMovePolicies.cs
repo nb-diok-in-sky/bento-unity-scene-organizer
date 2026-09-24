@@ -84,7 +84,6 @@ namespace Bento
         }
     }
 
-
     sealed class AssetMoveModelMaterialRule : IAssetMoveRule
     {
         public string Validate(AssetMoveEntry entry)

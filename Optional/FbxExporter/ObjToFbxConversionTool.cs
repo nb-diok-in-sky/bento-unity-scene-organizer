@@ -17,6 +17,7 @@ namespace Bento
         {
             EditorGUILayout.LabelField("OBJ 转项目 FBX", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
+                "使用 Unity 官方 FBX Exporter 导出 OBJ，并创建通用 URP/Lit 独立材质后重映射 FBX 材质槽。原始文件不会删除；MTL 中的 Metallic/Roughness 贴图暂不自动合并。",
                 MessageType.Info);
             _obj = (GameObject)EditorGUILayout.ObjectField("OBJ 模型", _obj, typeof(GameObject), false);
             _mtl = (DefaultAsset)EditorGUILayout.ObjectField("MTL 文件", _mtl, typeof(DefaultAsset), false);

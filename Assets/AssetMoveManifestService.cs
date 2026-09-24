@@ -10,6 +10,7 @@ namespace Bento
 {
     static class AssetMoveManifestService
     {
+        const string OutputFolder = "Bento_移动清单";
 
         public static string ExportPlan(IReadOnlyList<AssetMoveEntry> entries)
         {
@@ -19,10 +20,10 @@ namespace Bento
                 oldPath = entry.sourcePath,
                 newPath = entry.targetPath
             });
-            return Export("移动前预览", moves, false);
+            return Export("移动前预览", moves);
         }
 
-
+        static string Export(string label, IEnumerable<AssetMoveHistoryEntry> sourceMoves)
         {
             string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
             string outputRoot = Path.Combine(projectRoot, OutputFolder);

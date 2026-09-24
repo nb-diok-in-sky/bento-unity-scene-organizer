@@ -10,7 +10,6 @@ namespace Bento
     public static class AssetReferenceSharingAudit
     {
         const string OutputPath = "Temp/Bento_asset_reference_sharing_audit.json";
-
         [Serializable]
         class Report
         {
@@ -37,10 +36,20 @@ namespace Bento
         [MenuItem("Tools/Bento/审计资产引用复用", priority = -9980)]
         public static void Run()
         {
+            string[] roots = GetSelectedRoots();
+            if (roots.Length == 0)
+            {
+                EditorUtility.DisplayDialog(
+                    "未选择扫描范围",
+                    "请先在 Project 中选择一个或多个文件夹，再运行资产引用复用审计。",
+                    "确定");
+                return;
+            }
+
             var materialModels = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
             var textureModels = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
             var textureMaterials = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-            var modelGuids = AssetDatabase.FindAssets("t:GameObject", Roots);
+            var modelGuids = AssetDatabase.FindAssets("t:GameObject", roots);
             var report = new Report();
 
             try
@@ -113,6 +122,15 @@ namespace Bento
                 var texture = material.GetTexture(ShaderUtil.GetPropertyName(material.shader, index));
                 if (texture != null) yield return texture;
             }
+        }
+
+        static string[] GetSelectedRoots()
+        {
+            return ProjectSelection.CurrentAssets
+                .Select(AssetDatabase.GetAssetPath)
+                .Where(AssetDatabase.IsValidFolder)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
 
         static void AddOwner(Dictionary<string, HashSet<string>> map, string key, string owner)

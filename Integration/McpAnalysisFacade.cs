@@ -119,7 +119,6 @@ namespace Bento
             };
         }
 
-
         public static object AnalyzeProjectAssetRename(AssetNamingOptions naming)
         {
             var assets = Selection.objects.Where(asset => asset != null)

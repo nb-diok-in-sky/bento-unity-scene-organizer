@@ -45,6 +45,9 @@ namespace Bento
         {
             EditorGUILayout.LabelField("场景几何相交审查", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
+                "未完工：当前检测结果和批量删除流程仍处于实验阶段。请只把它作为人工检查辅助，不要把结果直接当作最终结论。",
+                MessageType.Warning);
+            EditorGUILayout.HelpBox(
                 "只读扫描，不修改场景。选择 Unity Layer A 和 Layer B，只检查这两个 Layer 之间。Collider 结果较可靠；没有 Collider 时会列为 Renderer 包围盒疑似项。",
                 MessageType.Info);
 
@@ -151,7 +154,7 @@ namespace Bento
                     _batchTarget = (BatchTarget)EditorGUILayout.Popup(
                         "批量操作目标",
                         (int)_batchTarget,
-                        new[] { "B 组（默认：草）", "A 组（例如石头）", "A 与 B 两组" });
+                        new[] { "B 组（默认清理目标）", "A 组（默认保留目标）", "A 与 B 两组" });
                 }
 
                 using (new EditorGUILayout.HorizontalScope())
@@ -172,7 +175,7 @@ namespace Bento
                 }
 
                 EditorGUILayout.LabelField(
-                    "删除会按对象去重，并通过 Unity Undo 支持一次 Ctrl+Z 恢复。默认只删除 B 组，不会删除 A 组石头。",
+                    "删除会按对象去重，并通过 Unity Undo 支持一次 Ctrl+Z 恢复。默认只删除 B 组，不会删除 A 组。",
                     EditorStyles.wordWrappedMiniLabel);
             }
         }
@@ -246,8 +249,8 @@ namespace Bento
         {
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
-                _firstLayer = EditorGUILayout.LayerField("Layer A（如石头）", _firstLayer);
-                _secondLayer = EditorGUILayout.LayerField("Layer B（如草）", _secondLayer);
+                _firstLayer = EditorGUILayout.LayerField("Layer A（默认保留）", _firstLayer);
+                _secondLayer = EditorGUILayout.LayerField("Layer B（默认清理）", _secondLayer);
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     if (GUILayout.Button("交换 A / B"))
