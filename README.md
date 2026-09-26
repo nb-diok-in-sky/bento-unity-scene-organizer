@@ -34,8 +34,8 @@ https://github.com/nb-diok-in-sky/Bento.git
 | 整理 | 文件夹收藏、批量重命名（场景对象 / Project 资产）、资产安全移动、操作历史与回滚、资产信息导出、按后缀清理、递归抽取资产、Hierarchy 整理、场景光源批处理、场景物体阴影 |
 | 资源、模型和预制体 | 模型导入（批量生成 URP/Lit 材质、绑定贴图、生成 Prefab）、资源变体、FBX 材质继承、Prefab Layer、Tag/Layer |
 | 材质 | Shader 替换、选中模型的材质和贴图、选中 Terrain 绘制贴图、Terrain Layer 生成 |
-| 场景 | 场景材质替换、查找材质使用对象、场景材质吸管、预制体替换、FBX 实例检查、可视范围审查 |
-| 菜单 | 智能右键菜单（`Bento/智能工具`，按当前选择给出可用功能）、光照 UV 批处理与烘焙、资产引用复用审计 |
+| 场景 | 场景材质替换、查找材质使用对象、场景材质吸管、预制体替换、FBX 实例检查、可视范围审查、烘焙光照（批量 Lightmap UV 与灯光池烘焙） |
+| 菜单 | 智能右键菜单（`Bento/智能工具`，按当前选择给出可用功能）、资产引用复用审计 |
 
 每个功能的详细说明见 [使用说明](Documentation~/使用说明.md)。
 
@@ -63,6 +63,23 @@ Optional/
 Tests/Editor/       编辑器测试（Unity Test Framework）
 Documentation~/     使用说明
 ```
+
+## 扩展：添加自己的页面
+
+在任意引用了 `Bento.Editor` 的编辑器程序集中，给一个类加上特性并实现 `IBentoTool`，它就会出现在工具箱里：
+
+```csharp
+using UnityEditor;
+using Bento;
+
+[BentoPage("my_tool", BentoGroups.Scene, "我的工具", Order = 100)]
+sealed class MyTool : IBentoTool
+{
+    public void Draw() => EditorGUILayout.LabelField("Hello");
+}
+```
+
+需要响应页面切换或选中变化时，再实现 `IBentoPageLifecycle`。代码中可以用 `BentoWindow.OpenPage<MyTool>()` 打开该页面。
 
 ## 贡献
 
