@@ -69,5 +69,11 @@ Documentation~/     使用说明
 欢迎提交 Issue 和 Pull Request。提交前请确认：
 
 - 在 Unity 2022.3 中编译无错误。
-- 在 `Window > General > Test Runner` 的 EditMode 中运行测试并通过。
+- 在 `Window > General > Test Runner` 的 EditMode 中运行测试并通过。包内测试默认不显示，需要在项目的 `Packages/manifest.json` 中加入：
+
+  ```json
+  "testables": ["com.nbdiok.bento"]
+  ```
+
+  测试会在 `Assets/_BentoTestTemp` 下创建临时资产，结束后自动删除。
 - 新增会修改资产或场景的功能时，保持“先预览、后确认”的流程，并提供撤销或回滚。

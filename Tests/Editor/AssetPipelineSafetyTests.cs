@@ -1,60 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
+using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 
-namespace Bento
+namespace Bento.Tests
 {
-    public static class BentoAssetPipelineSafetySelfTest
+    [TestFixture]
+    public sealed class AssetPipelineSafetyTests
     {
-        const string Root = "Assets/Editor/_BentoSafetyTemp";
+        const string RootName = "_BentoTestTemp";
+        const string Root = "Assets/" + RootName;
         const string Source = Root + "/Source";
         const string Target = Root + "/Target";
-        static readonly string ResultPath = Path.GetFullPath(
-            Path.Combine(Application.dataPath, "../Library/Bento/SafetySelfTest.json"));
 
-        [MenuItem("Tools/Bento/运行资产流水线安全自测", priority = -9970)]
-        public static void Run()
-        {
-            try
-            {
-                Prepare();
-                VerifyMoveAndRestore();
-                VerifyDuplicateTargetRejected();
-                VerifyDuplicateSourceRejected();
-                VerifyPartialFailureRollsBack();
-                VerifyUnsafePlansRejected();
-                VerifyMovePlanRevalidatesBeforeExecution();
-                VerifyRetargetingRevalidatesPlan();
-                VerifyRenameAndRestore();
-                VerifyRenamePlanRevalidatesBeforeExecution();
-                VerifyRenameHistoryHandlerRestore();
-                VerifyHistoryRecordFailureIsReportedWithoutThrowing();
-                VerifyUndoScopeCommitAndRollback();
-                VerifyPrefabLayerRestoreRejectsChangedHierarchy();
-                VerifyResourceVariantRejectsStaleSettings();
-                VerifyResourceVariantMaterialIsolation();
-                VerifyResourceVariantFailureIsRecoverable();
-                WriteResult(true, string.Empty);
-                Debug.Log("[Bento Safety] PASS：移动/重命名 GUID 与引用保留、资源变体材质隔离、反向恢复、中途失败回滚、危险计划拒绝均通过。");
-                EditorUtility.DisplayDialog("Bento 安全自测", "全部测试通过。", "确定");
-            }
-            catch (Exception exception)
-            {
-                WriteResult(false, exception.ToString());
-                Debug.LogException(exception);
-                EditorUtility.DisplayDialog("Bento 安全自测失败", exception.Message, "确定");
-                throw;
-            }
-            finally
-            {
-                DeleteRoot();
-            }
-        }
-
-        static void VerifyMoveAndRestore()
+        [Test]
+        public void MoveAndRestore()
         {
             var texture = new Texture2D(2, 2) { name = "SafetyTexture" };
             AssetDatabase.CreateAsset(texture, Source + "/SafetyTexture.asset");
@@ -79,7 +40,8 @@ namespace Bento
                     AssetDatabase.LoadAssetAtPath<Texture2D>(sourcePath), "恢复后材质贴图引用断裂");
         }
 
-        static void VerifyDuplicateTargetRejected()
+        [Test]
+        public void DuplicateTargetRejected()
         {
             var first = CreateTexture("First");
             var second = CreateTexture("Second");
@@ -99,7 +61,8 @@ namespace Bento
             Require(rejected, "重复目标路径未被拒绝");
         }
 
-        static void VerifyDuplicateSourceRejected()
+        [Test]
+        public void DuplicateSourceRejected()
         {
             var texture = CreateTexture("DuplicateSource");
             string sourcePath = Source + "/DuplicateSource.asset";
@@ -117,7 +80,8 @@ namespace Bento
             Require(rejected, "重复源资产未被整批预验证拒绝");
         }
 
-        static void VerifyPartialFailureRollsBack()
+        [Test]
+        public void PartialFailureRollsBack()
         {
             var first = CreateTexture("RollbackFirst");
             var second = CreateTexture("RollbackSecond");
@@ -145,7 +109,8 @@ namespace Bento
             Require(completed.Count == 0, "成功回滚后仍保留了误导性移动历史");
         }
 
-        static void VerifyUnsafePlansRejected()
+        [Test]
+        public void UnsafePlansRejected()
         {
             var first = CreateTexture("ChainFirst");
             var second = CreateTexture("ChainSecond");
@@ -165,7 +130,8 @@ namespace Bento
             Require(chainedRejected, "顺序依赖的链式移动未被拒绝");
         }
 
-        static void VerifyMovePlanRevalidatesBeforeExecution()
+        [Test]
+        public void MovePlanRevalidatesBeforeExecution()
         {
             var texture = CreateTexture("StaleMoveSource");
             string sourcePath = Source + "/StaleMoveSource.asset";
@@ -186,7 +152,8 @@ namespace Bento
             Require(rejected, "资源身份变化后，旧移动计划仍被执行");
         }
 
-        static void VerifyRetargetingRevalidatesPlan()
+        [Test]
+        public void RetargetingRevalidatesPlan()
         {
             var texture = CreateTexture("RetargetSource");
             var plan = SafeAssetMoveService.BuildPlan(
@@ -208,7 +175,8 @@ namespace Bento
             Require(!string.IsNullOrEmpty(plan[0].warning), "修改目标后没有重新运行安全规则");
         }
 
-        static void VerifyRenameAndRestore()
+        [Test]
+        public void RenameAndRestore()
         {
             var texture = CreateTexture("RenameSource");
             string sourcePath = Source + "/RenameSource.asset";
@@ -228,7 +196,8 @@ namespace Bento
             Require(AssetDatabase.AssetPathToGUID(sourcePath) == guid, "恢复重命名后 GUID 改变");
         }
 
-        static void VerifyRenameHistoryHandlerRestore()
+        [Test]
+        public void RenameHistoryHandlerRestore()
         {
             var texture = CreateTexture("RenameHistorySource");
             string sourcePath = Source + "/RenameHistorySource.asset";
@@ -245,7 +214,8 @@ namespace Bento
             Require(AssetDatabase.AssetPathToGUID(sourcePath) == guid, "统一操作历史未能恢复重命名资产");
         }
 
-        static void VerifyRenamePlanRevalidatesBeforeExecution()
+        [Test]
+        public void RenamePlanRevalidatesBeforeExecution()
         {
             var source = CreateTexture("StaleRenameSource");
             string sourcePath = Source + "/StaleRenameSource.asset";
@@ -267,7 +237,8 @@ namespace Bento
             Require(AssetDatabase.LoadAssetAtPath<Texture2D>(sourcePath) == source, "身份失效的重命名计划错误移动了源资产");
         }
 
-        static void VerifyUndoScopeCommitAndRollback()
+        [Test]
+        public void UndoScopeCommitAndRollback()
         {
             var material = new Material(Shader.Find("Unlit/Color")) { name = "UndoScopeMaterial" };
             AssetDatabase.CreateAsset(material, Source + "/UndoScopeMaterial.mat");
@@ -290,7 +261,8 @@ namespace Bento
 
         }
 
-        static void VerifyHistoryRecordFailureIsReportedWithoutThrowing()
+        [Test]
+        public void HistoryRecordFailureIsReportedWithoutThrowing()
         {
             var service = new AssetOperationHistoryService(
                 new FailingHistoryRepository(),
@@ -300,7 +272,8 @@ namespace Bento
             Require(!string.IsNullOrEmpty(warning), "历史写入失败没有向用户返回警告");
         }
 
-        static void VerifyPrefabLayerRestoreRejectsChangedHierarchy()
+        [Test]
+        public void PrefabLayerRestoreRejectsChangedHierarchy()
         {
             string prefabPath = Source + "/LayerHistory.prefab";
             var source = new GameObject("LayerRoot");
@@ -338,7 +311,8 @@ namespace Bento
             Require(rejected, "Prefab Layer 恢复在节点结构变化后未阻止执行");
         }
 
-        static void VerifyResourceVariantRejectsStaleSettings()
+        [Test]
+        public void ResourceVariantRejectsStaleSettings()
         {
             var source = GameObject.CreatePrimitive(PrimitiveType.Cube);
             source.name = "StaleVariantSource";
@@ -363,7 +337,8 @@ namespace Bento
             }
         }
 
-        static void VerifyResourceVariantMaterialIsolation()
+        [Test]
+        public void ResourceVariantMaterialIsolation()
         {
             string prefabFolder = Target + "/Prefabs";
             string materialFolder = Target + "/Materials";
@@ -404,7 +379,8 @@ namespace Bento
             }
         }
 
-        static void VerifyResourceVariantFailureIsRecoverable()
+        [Test]
+        public void ResourceVariantFailureIsRecoverable()
         {
             var sourceMaterial = new Material(Shader.Find("Unlit/Color")) { name = "FailureSourceMaterial" };
             AssetDatabase.CreateAsset(sourceMaterial, Source + "/FailureSourceMaterial.mat");
@@ -482,13 +458,17 @@ namespace Bento
             public AssetOperationRecord Load(string id) => null;
         }
 
-        static void Prepare()
+        [SetUp]
+        public void SetUp()
         {
             DeleteRoot();
-            AssetDatabase.CreateFolder("Assets/Editor", "_BentoSafetyTemp");
+            AssetDatabase.CreateFolder("Assets", RootName);
             AssetDatabase.CreateFolder(Root, "Source");
             AssetDatabase.CreateFolder(Root, "Target");
         }
+
+        [TearDown]
+        public void TearDown() => DeleteRoot();
 
         static void DeleteRoot()
         {
@@ -498,34 +478,7 @@ namespace Bento
 
         static void Require(bool condition, string message)
         {
-            if (!condition) throw new InvalidOperationException(message);
-        }
-
-        static void WriteResult(bool passed, string message)
-        {
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(ResultPath));
-                var result = new SafetySelfTestResult
-                {
-                    passed = passed,
-                    completedAtUtc = DateTime.UtcNow.ToString("O"),
-                    message = message ?? string.Empty
-                };
-                File.WriteAllText(ResultPath, JsonUtility.ToJson(result, true), new UTF8Encoding(false));
-            }
-            catch (Exception exception)
-            {
-                Debug.LogWarning("[Bento Safety] 无法写入自测结果文件：" + exception.Message);
-            }
-        }
-
-        [Serializable]
-        sealed class SafetySelfTestResult
-        {
-            public bool passed;
-            public string completedAtUtc;
-            public string message;
+            Assert.IsTrue(condition, message);
         }
     }
 }
