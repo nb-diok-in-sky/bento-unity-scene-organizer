@@ -30,5 +30,3 @@ Thumbs.db
 LocalPackages/com.unity.formats.fbx/
 LocalPackages/com.autodesk.fbx/
 
-__pycache__/
-*.py[cod]

@@ -7,42 +7,6 @@ namespace Bento
 {
     enum TexType { BaseColor, Normal, Metallic, AO, Height, Emission, Roughness, Transparency, Unknown }
 
-    [Serializable] class PresetData
-    {
-        public string presetName = "Default";
-        public List<SuffixRuleEntry> suffixRules = new();
-        public List<OutputNameEntry> outputNames = new();
-    }
-    [Serializable] class SuffixRuleEntry { public string suffix = ""; public int type; }
-    [Serializable] class OutputNameEntry { public int type; public string outputSuffix = ""; }
-
-    class TexInfo
-    {
-        public string assetPath;
-        public string nameNoExt;
-        public string baseName;
-        public string suffix;
-        public TexType type;
-        public bool include = true;
-        public bool guessedByContent;
-    }
-
-    class MatFillInfo
-    {
-        public Material material;
-        public string matchedGroupName;
-        public Dictionary<TexType, Texture2D> matched = new();
-    }
-
-    class SharedContext
-    {
-        public List<TexInfo> textures = new();
-        public Dictionary<string, List<TexInfo>> groups = new();
-        public Dictionary<string, TexType> suffixMap = new();
-        public Dictionary<TexType, string> outputSuffixes = new(TexRules.DefaultOutput);
-        public bool scanDone;
-    }
-
     static partial class TexRules
     {
         static readonly (string suffix, TexType type)[] BuiltInByLength;
@@ -79,26 +43,6 @@ namespace Bento
             ("transparency", TexType.Transparency), ("opacity", TexType.Transparency),
             ("trans", TexType.Transparency), ("alpha", TexType.Transparency),
         };
-
-        public static readonly Dictionary<TexType, string> DefaultOutput = new()
-        {
-            {TexType.BaseColor,"BaseColor"}, {TexType.Normal,"Normal"}, {TexType.Metallic,"Metallic"},
-            {TexType.AO,"AO"}, {TexType.Height,"Height"}, {TexType.Emission,"Emission"},
-            {TexType.Roughness,"Roughness"}, {TexType.Transparency,"Transparency"},
-        };
-
-        static readonly string[] KnownPrefixes =
-        {
-            "T_", "M_", "SM_", "SK_", "TX_", "Mat_", "MI_", "Tex_",
-        };
-
-        public static string StripPrefix(string name)
-        {
-            foreach (var p in KnownPrefixes)
-                if (name.Length > p.Length && name.StartsWith(p, StringComparison.OrdinalIgnoreCase))
-                    return name.Substring(p.Length);
-            return name;
-        }
 
         public static readonly Dictionary<TexType, string> URPLitProps = new()
         {

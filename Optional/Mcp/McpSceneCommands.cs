@@ -22,9 +22,6 @@ namespace Bento
             commands["prepare_hierarchy_organization_draft"] = PrepareHierarchyDraft;
             commands["validate_loaded_scenes"] = _ =>
                 new SuccessResponse("Loaded scenes validated without modification.", McpSceneAnalysisFacade.ValidateLoadedScenes());
-            commands["scan_geometry_intersections"] = ScanGeometryIntersections;
-            commands["get_geometry_intersections"] = _ => ReadGeometryIntersections();
-            commands["clear_geometry_intersections"] = _ => ClearGeometryIntersections();
             commands["scan_scene_model_instances"] = ScanSceneModelInstances;
             commands["get_scene_model_instances"] = _ => ReadSceneModelInstances();
             commands["clear_scene_model_instances"] = _ => ClearSceneModelInstances();
@@ -57,39 +54,6 @@ namespace Bento
             });
         }
 
-        static object ScanGeometryIntersections(JObject parameters)
-        {
-            var options = new SceneGeometryScanOptions
-            {
-                scope = ReadGeometryScope(parameters?["scope"]?.ToString()),
-                firstLayer = parameters?["first_layer"]?.Value<int?>() ?? 0,
-                secondLayer = parameters?["second_layer"]?.Value<int?>() ?? 1,
-                includeInactive = parameters?["include_inactive"]?.Value<bool?>() ?? false,
-                ignoreSameHierarchy = parameters?["ignore_same_hierarchy"]?.Value<bool?>() ?? true,
-                includeBoundsOnlyCandidates = parameters?["include_bounds_candidates"]?.Value<bool?>() ?? true,
-                minimumBoundsOverlap = parameters?["minimum_bounds_overlap"]?.Value<float?>() ?? 0.01f,
-                minimumPenetration = parameters?["minimum_penetration"]?.Value<float?>() ?? 0.001f,
-                maximumResults = parameters?["maximum_results"]?.Value<int?>() ?? 500
-            };
-            return new SuccessResponse(
-                "Geometry intersections scanned without modifying the scene.",
-                SceneGeometryIntersectionService.Scan(options));
-        }
-
-        static object ReadGeometryIntersections()
-        {
-            SceneGeometryScanResult result = SceneGeometryIntersectionSession.Current;
-            return result == null
-                ? (object)new ErrorResponse("No geometry intersection result is cached. Run scan_geometry_intersections first.")
-                : new SuccessResponse("Cached geometry intersection result read.", result);
-        }
-
-        static object ClearGeometryIntersections()
-        {
-            SceneGeometryIntersectionSession.Clear();
-            return new SuccessResponse("Cached geometry intersection result cleared.");
-        }
-
         static object ScanSceneModelInstances(JObject parameters)
         {
             SceneModelInstanceAuditScope scope =
@@ -113,26 +77,6 @@ namespace Bento
         {
             SceneModelInstanceAuditSession.Clear();
             return new SuccessResponse("Cached scene model instance audit cleared.");
-        }
-
-        static SceneGeometryScanScope ReadGeometryScope(string value)
-        {
-            switch ((value ?? string.Empty).Trim().ToLowerInvariant())
-            {
-                case "layers":
-                case "between_layers":
-                case "pair":
-                    return SceneGeometryScanScope.BetweenLayers;
-                case "selection":
-                case "selection_only":
-                    return SceneGeometryScanScope.SelectionOnly;
-                case "scene":
-                case "loaded_scenes":
-                case "all":
-                    return SceneGeometryScanScope.LoadedScenes;
-                default:
-                    return SceneGeometryScanScope.SelectionAgainstScene;
-            }
         }
     }
 }

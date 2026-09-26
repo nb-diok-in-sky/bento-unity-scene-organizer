@@ -100,25 +100,6 @@ namespace Bento
             };
         }
 
-        public static object AnalyzeAssetOrganizer(AIAssetOrganizerConfig config)
-        {
-            var plan = AIAssetOrganizerPlanner.Build(config);
-            return new
-            {
-                source_root = config.sourceRoot,
-                count = plan.entries.Count,
-                warnings = plan.warnings.ToArray(),
-                entries = plan.entries.Select(entry => new
-                {
-                    source_path = entry.sourcePath,
-                    kind = entry.kind.ToString(),
-                    target_path = entry.targetPath,
-                    included = entry.include,
-                    warning = entry.warning
-                }).ToArray()
-            };
-        }
-
         public static object AnalyzeProjectAssetRename(AssetNamingOptions naming)
         {
             var assets = Selection.objects.Where(asset => asset != null)

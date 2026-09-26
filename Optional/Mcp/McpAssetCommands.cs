@@ -23,7 +23,6 @@ namespace Bento
                 new { report = UsedAssetSelectionDiagnosticService.BuildByObjectName(parameters?["object_name"]?.ToString()) });
             commands["audit_prefab_materials"] = AuditPrefabMaterials;
             commands["analyze_asset_move"] = AnalyzeAssetMove;
-            commands["analyze_ai_asset_organizer"] = AnalyzeAssetOrganizer;
             commands["analyze_selected_asset_info"] = _ => new SuccessResponse(
                 "Selected Project assets analyzed without modification.",
                 McpAnalysisFacade.AnalyzeSelectedAssetInfo());
@@ -70,20 +69,6 @@ namespace Bento
                     parameters?["material_folder"]?.ToString(),
                     parameters?["texture_folder"]?.ToString(),
                     ReadNamingOptions(parameters)));
-        }
-
-        static object AnalyzeAssetOrganizer(JObject parameters)
-        {
-            return new SuccessResponse(
-                "AI asset organizer plan analyzed. Execution requires explicit confirmation in the Unity UI.",
-                McpAnalysisFacade.AnalyzeAssetOrganizer(new AIAssetOrganizerConfig
-                {
-                    sourceRoot = parameters?["source_root"]?.ToString(),
-                    prefabFolder = parameters?["prefab_folder"]?.ToString(),
-                    materialFolder = parameters?["material_folder"]?.ToString(),
-                    textureFolder = parameters?["texture_folder"]?.ToString(),
-                    otherFolder = parameters?["other_folder"]?.ToString()
-                }));
         }
 
         static object AuditPrefabMaterials(JObject parameters)

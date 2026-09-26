@@ -1,9 +1,0 @@
-schema_version = "1.0.0"
-id = "bento_building_surface_splitter"
-version = "0.2.0"
-name = "Bento Building Surface Splitter"
-tagline = "Classify building surfaces into interior and exterior"
-maintainer = "Bento"
-type = "add-on"
-blender_version_min = "4.2.0"
-license = ["SPDX:GPL-3.0-or-later"]

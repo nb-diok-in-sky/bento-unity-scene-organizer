@@ -4,8 +4,6 @@
 
 主要功能：
 
-- 材质、贴图扫描与批处理
-- Missing/Error/Built-in 材质的序列化属性恢复与 URP/Lit 迁移
 - 从选中 Prefab 收集材质，并在执行前逐项筛选和定位
 - 选中 FBX 与贴图后生成 URP/Lit 材质、重映射材质槽并创建 Prefab
 - Hierarchy 预制体替换与批量重命名
@@ -15,25 +13,10 @@
 - 从选中模型收集模型、材质和贴图，并按三类独立命名后安全移动
 - Terrain 当前绘制层贴图的独立选择入口，避免混入普通模型资产
 - 资源变体自动识别 Model、Prefab、Material、Texture 输出目录，并复制重连实际引用资源
-- 实验性几何相交审查（未完工）、LOD 批量关闭、物体显隐和材质使用对象定位
+- LOD 批量关闭、物体显隐和材质使用对象定位
 - 批量切换模型 Generate Lightmap UVs，并通过动态光池/静态光池安全启动烘焙
 - 根据 Hierarchy 或 Project 当前选择生成对应的 Bento 智能右键菜单
 - 可选 MCP 只读分析接口
-- 从 Unity 中选中 FBX，一键启动 Blender 并加载建筑内外墙拆分插件
-
-## Blender 建筑内外墙拆分
-
-仓库的 `BlenderTools/BuildingSurfaceSplitter` 包含独立 Blender 插件。它不会参与
-Unity C# 编译，也不会要求只使用 Unity 工具的使用者安装 Blender。
-
-在 `资源、模型和预制体 > Blender 建筑内外墙拆分` 中选择 Project 里的 FBX，
-首次指定本机 `blender.exe` 后即可一键启动 Blender、导入模型并加载插件。
-Blender 路径保存在本机 `EditorPrefs`，不会提交到 Git。
-
-插件使用一个或多个不可穿墙的室内方块辅助区分内墙、外墙和双层窗户纸，
-支持检查选中分类面、手工修正、按室内方块四边计算室外竖面候选、
-按自定义名称分离，并导出新的 FBX。
-详细步骤见 `BlenderTools/BuildingSurfaceSplitter/README.md`。
 
 ## 在 Unity 项目中使用
 
@@ -48,35 +31,6 @@ MCP for Unity 和 Unity FBX Exporter 均为可选依赖。未安装时对应页�
 安装或移除包后，也可执行 `Tools/Bento > 刷新可选依赖模块` 手动刷新。
 
 本仓库不保存 `.mcp.json`、密钥或个人 AI 配置。
-
-## URP 材质恢复
-
-也可以直接载入 Project 中选中的材质，或收集选中 Prefab 的 Renderer 引用材质。
-
-执行前的列表支持全选、全不选、反选、只选疑似损坏 Shader 和逐项定位。迁移目标固定为
-`Universal Render Pipeline/Lit`。工具从材质序列化数据读取旧贴图、颜色和数值，因此原 Shader
-丢失或进入 `Hidden/InternalErrorShader` 时仍能尝试恢复常见属性。执行会写入 Undo，并在项目根目录
-的 `Bento_材质迁移备份` 中保存迁移清单。
-
-该流程只迁移常见 PBR 属性，不会复刻原自定义 Shader 的风、顶点动画、混合层、距离淡出或其他专属效果。
-
-## FBX 快速导入
-
-在 `资源 > FBX 快速导入` 中锁定一个 Project FBX，再选择一组贴图。工具会依据现有命名规则推断
-BaseColor、Normal、Metallic、AO、Height、Emission 等语义，列表中的类型可以手动修正。
-
-当前版本创建一个 URP/Lit 材质，并通过 `ModelImporter` 将它映射到 FBX 的全部材质槽。多材质槽的
-逐槽匹配尚未实现。`直接生成 Prefab` 会在内存中实例化 FBX 后保存 Prefab，不会修改当前场景。
-
-贴图列表支持 `PackedMask`。默认 MSA 预设按 `R=Metallic、G=Smoothness、B=AO` 读取，并生成
-URP/Lit 使用的 `MetallicSmoothness` 与 `Occlusion` 两张贴图。窗口可以修改每项数据的来源通道；
-如果源贴图存储 Roughness，可以启用 Smoothness 反相。工具也会把 Normal 设置为 Normal Map，并将
-PackedMask 和生成的数据贴图设为 Linear。
-
-同一页面的“批量 FBX 转 Prefab”支持递归扫描来源文件夹，并将 Prefab 平铺到统一目录，或按来源
-子目录保留结构。执行前可以预览、定位和取消单项。已有同名 Prefab 时支持跳过、生成唯一名称或
-覆盖；默认在输出根目录下创建一个与来源文件夹同名的文件夹，并使用保留目录结构和跳过策略。
-该批量入口只创建 Prefab，不自动修改材质。
 
 ## 可选依赖：Unity FBX Exporter
 

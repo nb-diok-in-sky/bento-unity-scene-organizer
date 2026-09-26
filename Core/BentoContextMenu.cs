@@ -20,7 +20,6 @@ namespace Bento
                 Add(menu, "选择/选中模型、材质和贴图", SelectUsedAssetsTool.SelectAdvancedFromCurrentSelection, ref count);
                 AddPage(menu, "场景/预制体替换", "prefab_replace", ref count);
                 AddPage(menu, "场景/Hierarchy 整理", "hierarchy_organization", ref count);
-                AddPage(menu, "场景/几何相交审查", "geometry_intersections", ref count);
                 AddPage(menu, "场景/物体阴影批处理", "scene_renderer_shadow", ref count);
                 AddPage(menu, "材质/场景材质替换", "scene_material_replace", ref count);
             }
@@ -35,7 +34,6 @@ namespace Bento
             {
                 Add(menu, "选择/选中模型、材质和贴图", SelectUsedAssetsTool.SelectAdvancedFromCurrentSelection, ref count);
                 AddPage(menu, "FBX/材质继承", "fbx_material_inherit", ref count);
-                AddPage(menu, "FBX/快速导入", "fbx_quick_setup", ref count);
                 AddPage(menu, "资源/创建资源变体", "resource_variant", ref count);
                 AddPage(menu, "资源/Prefab Layer", "prefab_layer", ref count);
             }
@@ -43,21 +41,11 @@ namespace Bento
             if (context.HasMaterials)
             {
                 AddPage(menu, "材质/Shader 替换", "shader_replace", ref count);
-                AddPage(menu, "材质/材质修复", "material_repair", ref count);
-                AddPage(menu, "材质/填充材质球", "material_fill", ref count);
-            }
-
-            if (context.HasTextures)
-            {
-                AddPage(menu, "贴图/贴图扫描", "texture_scan", ref count);
-                AddPage(menu, "贴图/贴图改名", "texture_rename", ref count);
-                AddPage(menu, "FBX/快速导入并绑定贴图", "fbx_quick_setup", ref count);
             }
 
             if (context.HasFolders)
             {
                 AddPage(menu, "文件夹/收藏文件夹", "folder_favorites", ref count);
-                AddPage(menu, "文件夹/AI 资产整理", "ai_asset_organizer", ref count);
                 AddPage(menu, "文件夹/资产移动", "asset_move", ref count);
                 AddPage(menu, "文件夹/批量重命名", "batch_rename", ref count);
             }
@@ -96,7 +84,6 @@ namespace Bento
             public bool HasProjectAssets;
             public bool HasProjectModels;
             public bool HasMaterials;
-            public bool HasTextures;
             public bool HasFolders;
 
             public static SelectionContext Analyze()
@@ -123,7 +110,6 @@ namespace Bento
                     result.HasProjectAssets = true;
                     result.HasFolders |= AssetDatabase.IsValidFolder(path);
                     result.HasMaterials |= selected is Material;
-                    result.HasTextures |= selected is Texture;
                     result.HasProjectModels |= IsProjectModel(selected, path);
                 }
                 return result;
