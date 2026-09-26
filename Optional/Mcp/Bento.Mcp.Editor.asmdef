@@ -17,8 +17,14 @@
   ],
   "autoReferenced": true,
   "defineConstraints": [
-    "BENTO_ENABLE_MCP_FOR_UNITY"
+    "BENTO_HAS_MCP_FOR_UNITY"
   ],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.coplaydev.unity-mcp",
+      "expression": "",
+      "define": "BENTO_HAS_MCP_FOR_UNITY"
+    }
+  ],
   "noEngineReferences": false
 }

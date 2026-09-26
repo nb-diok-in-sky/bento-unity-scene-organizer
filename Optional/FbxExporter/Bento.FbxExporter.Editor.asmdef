@@ -1,0 +1,27 @@
+{
+  "name": "Bento.FbxExporter.Editor",
+  "rootNamespace": "Bento",
+  "references": [
+    "Bento.Editor",
+    "Unity.Formats.Fbx.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "BENTO_HAS_FBX_EXPORTER"
+  ],
+  "versionDefines": [
+    {
+      "name": "com.unity.formats.fbx",
+      "expression": "",
+      "define": "BENTO_HAS_FBX_EXPORTER"
+    }
+  ],
+  "noEngineReferences": false
+}

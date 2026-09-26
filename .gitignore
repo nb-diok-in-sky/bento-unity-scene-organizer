@@ -24,9 +24,3 @@ Builds/
 # OS files
 .DS_Store
 Thumbs.db
-
-# Optional official Unity FBX packages installed locally.
-# Keep third-party binaries and licenses separate from Bento source control.
-LocalPackages/com.unity.formats.fbx/
-LocalPackages/com.autodesk.fbx/
-
