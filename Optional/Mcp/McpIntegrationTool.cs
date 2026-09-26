@@ -20,7 +20,7 @@ namespace Bento
         {
             EditorGUILayout.LabelField("AI / MCP 集成", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "MCP for Unity 负责让外部 AI 客户端控制 Unity。Bento通过自定义 bento 命令向 AI 暴露安全的查询与干运行能力。",
+                "MCP for Unity 负责让外部 AI 客户端控制 Unity。Bento 通过自定义 bento 命令向 AI 暴露安全的查询与干运行能力。",
                 MessageType.Info);
 
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
