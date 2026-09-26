@@ -65,7 +65,7 @@ namespace Bento
                 {
                     EditorGUILayout.LabelField(record.hierarchyPath, EditorStyles.boldLabel);
                     if (GUILayout.Button("定位", GUILayout.Width(58)))
-                        Focus(record.instanceId);
+                        BentoGUI.FocusSceneObject(record.instanceId);
                 }
                 EditorGUILayout.LabelField($"场景：{record.scenePath}", EditorStyles.miniLabel);
                 EditorGUILayout.LabelField($"模型：{record.modelAssetPath}", EditorStyles.miniLabel);
@@ -94,15 +94,6 @@ namespace Bento
                 .Select(record => EditorUtility.InstanceIDToObject(record.instanceId))
                 .Where(value => value != null)
                 .ToArray();
-        }
-
-        static void Focus(int instanceId)
-        {
-            Object target = EditorUtility.InstanceIDToObject(instanceId);
-            if (target == null) return;
-            Selection.activeObject = target;
-            EditorGUIUtility.PingObject(target);
-            SceneView.lastActiveSceneView?.FrameSelected();
         }
     }
 }

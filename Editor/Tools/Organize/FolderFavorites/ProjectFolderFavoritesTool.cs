@@ -140,7 +140,7 @@ namespace Bento
                 using (new EditorGUI.DisabledScope(folder == null))
                 {
                     if (GUILayout.Button(new GUIContent(displayName, favorite.path), GUILayout.Height(27)))
-                        LocateFolder(folder);
+                        BentoGUI.Locate(folder);
                 }
 
                 if (DrawMoveButton("▲", index, index - 1, index == 0))
@@ -181,7 +181,7 @@ namespace Bento
                 string.Equals(item.path, path, StringComparison.OrdinalIgnoreCase));
             if (existing != null)
             {
-                LocateFolder(AssetDatabase.LoadAssetAtPath<DefaultAsset>(path));
+                BentoGUI.Locate(AssetDatabase.LoadAssetAtPath<DefaultAsset>(path));
                 EditorUtility.DisplayDialog("已经收藏", $"该文件夹已经在收藏中：\n{path}", "确定");
                 return;
             }
@@ -192,14 +192,6 @@ namespace Bento
                 alias = System.IO.Path.GetFileName(path)
             });
             Save();
-        }
-
-        static void LocateFolder(DefaultAsset folder)
-        {
-            if (folder == null)
-                return;
-            Selection.activeObject = folder;
-            EditorGUIUtility.PingObject(folder);
         }
 
         void Swap(int first, int second)

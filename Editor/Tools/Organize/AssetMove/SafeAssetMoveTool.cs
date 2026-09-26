@@ -89,7 +89,7 @@ namespace Bento
 
         void DrawPlan()
         {
-            _scrollPosition = AssetPlanGUI.DrawMovePlan(_plan, _scrollPosition, Ping);
+            _scrollPosition = AssetPlanGUI.DrawMovePlan(_plan, _scrollPosition, BentoGUI.LocateAsset);
         }
 
         void DrawActions()
@@ -228,13 +228,6 @@ namespace Bento
         static string GetFolderPath(DefaultAsset folder)
         {
             return folder == null ? string.Empty : AssetDatabase.GetAssetPath(folder);
-        }
-
-        static void Ping(string path)
-        {
-            var asset = AssetDatabase.LoadMainAssetAtPath(path);
-            Selection.activeObject = asset;
-            EditorGUIUtility.PingObject(asset);
         }
     }
 }

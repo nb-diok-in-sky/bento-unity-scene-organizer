@@ -158,10 +158,10 @@ namespace Bento
                 else foreach (string warning in LastResult.healthWarnings) EditorGUILayout.HelpBox(warning, MessageType.Warning);
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    if (GUILayout.Button("定位新 Prefab")) PingFirst(LastResult.createdPrefabs);
-                    if (GUILayout.Button("定位模型")) PingFirst(LastResult.createdModels);
-                    if (GUILayout.Button("定位材质")) PingFirst(LastResult.createdMaterials);
-                    if (GUILayout.Button("定位贴图")) PingFirst(LastResult.createdTextures);
+                    if (GUILayout.Button("定位新 Prefab")) BentoGUI.LocateAsset(LastResult.createdPrefabs.FirstOrDefault());
+                    if (GUILayout.Button("定位模型")) BentoGUI.LocateAsset(LastResult.createdModels.FirstOrDefault());
+                    if (GUILayout.Button("定位材质")) BentoGUI.LocateAsset(LastResult.createdMaterials.FirstOrDefault());
+                    if (GUILayout.Button("定位贴图")) BentoGUI.LocateAsset(LastResult.createdTextures.FirstOrDefault());
                 }
                 if (GUILayout.Button("一键完整撤销本次生成")) UndoLastGeneration();
             }
@@ -239,14 +239,6 @@ namespace Bento
         }
 
         static string State(bool enabled, string reason) => enabled ? "复制" : $"保留（{reason}）";
-
-        static void PingFirst(List<string> paths)
-        {
-            if (paths.Count == 0) return;
-            var asset = AssetDatabase.LoadMainAssetAtPath(paths[0]);
-            Selection.activeObject = asset;
-            EditorGUIUtility.PingObject(asset);
-        }
     }
 
     static class ResourceVariantMcpSummary

@@ -315,8 +315,7 @@ namespace Bento
         static void LocateFolder(DefaultAsset folder)
         {
             EditorApplication.ExecuteMenuItem("Window/General/Project");
-            Selection.activeObject = folder;
-            EditorGUIUtility.PingObject(folder);
+            BentoGUI.Locate(folder);
         }
 
         static void OpenFolder(DefaultAsset folder)

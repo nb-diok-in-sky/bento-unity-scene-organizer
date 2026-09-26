@@ -85,7 +85,7 @@ namespace Bento
                 {
                     EditorGUILayout.LabelField(record.hierarchyPath, EditorStyles.boldLabel);
                     if (GUILayout.Button("定位", GUILayout.Width(58)))
-                        Focus(record.gameObjectInstanceId);
+                        BentoGUI.FocusSceneObject(record.gameObjectInstanceId);
                 }
 
                 EditorGUILayout.LabelField(
@@ -130,15 +130,6 @@ namespace Bento
                 .Where(target => target != null)
                 .Distinct()
                 .ToArray();
-            SceneView.lastActiveSceneView?.FrameSelected();
-        }
-
-        static void Focus(int instanceId)
-        {
-            UnityEngine.Object target = EditorUtility.InstanceIDToObject(instanceId);
-            if (target == null) return;
-            Selection.activeObject = target;
-            EditorGUIUtility.PingObject(target);
             SceneView.lastActiveSceneView?.FrameSelected();
         }
     }

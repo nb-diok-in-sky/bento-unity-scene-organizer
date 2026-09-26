@@ -1,5 +1,8 @@
+using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Bento
 {
@@ -42,6 +45,56 @@ namespace Bento
             if (!options.appendNumber) return;
             options.startNumber = EditorGUILayout.IntField("起始编号", options.startNumber);
             options.numberDigits = EditorGUILayout.IntSlider("编号位数", options.numberDigits, 1, 6);
+        }
+
+        /// <summary>Selects <paramref name="target"/> and highlights it in the Project or Hierarchy window.</summary>
+        public static void Locate(Object target)
+        {
+            if (target == null) return;
+            Selection.activeObject = target;
+            EditorGUIUtility.PingObject(target);
+        }
+
+        public static void LocateAsset(string assetPath)
+        {
+            if (string.IsNullOrEmpty(assetPath)) return;
+            Locate(AssetDatabase.LoadMainAssetAtPath(assetPath));
+        }
+
+        /// <summary>Selects a scene object by instance id, highlights it and frames it in the Scene view.</summary>
+        public static void FocusSceneObject(int instanceId)
+        {
+            Object target = EditorUtility.InstanceIDToObject(instanceId);
+            if (target == null) return;
+            Locate(target);
+            SceneView.lastActiveSceneView?.FrameSelected();
+        }
+
+        public static void LocateButton(Object target, float width = 44f)
+        {
+            if (GUILayout.Button("定位", GUILayout.Width(width))) Locate(target);
+        }
+
+        /// <summary>
+        /// Draws "select all / select none / invert" buttons for a checklist. Entries rejected by
+        /// <paramref name="selectable"/> are never switched on.
+        /// </summary>
+        public static void DrawIncludeButtons<T>(
+            IEnumerable<T> entries,
+            Func<T, bool> isIncluded,
+            Action<T, bool> setIncluded,
+            Func<T, bool> selectable = null,
+            string selectAllLabel = "全选",
+            float selectAllWidth = 60f)
+        {
+            if (entries == null) return;
+            selectable = selectable ?? (_ => true);
+            if (GUILayout.Button(selectAllLabel, GUILayout.Width(selectAllWidth)))
+                foreach (T entry in entries) setIncluded(entry, selectable(entry));
+            if (GUILayout.Button("全不选", GUILayout.Width(70)))
+                foreach (T entry in entries) setIncluded(entry, false);
+            if (GUILayout.Button("反选", GUILayout.Width(60)))
+                foreach (T entry in entries) setIncluded(entry, !isIncluded(entry) && selectable(entry));
         }
     }
 }

@@ -74,7 +74,7 @@ namespace Bento
                         using (new EditorGUI.DisabledScope(EditorUtility.InstanceIDToObject(entry.objectInstanceId) == null))
                         {
                             if (GUILayout.Button("定位对象", GUILayout.Width(72)))
-                                FocusObject(entry.objectInstanceId);
+                                BentoGUI.FocusSceneObject(entry.objectInstanceId);
                         }
                     }
                     EditorGUILayout.LabelField("→ " + entry.targetParentPath, EditorStyles.miniLabel);
@@ -227,7 +227,7 @@ namespace Bento
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("定位第一个风险对象", GUILayout.Height(28)))
-                    FocusObject(risks[0].objectInstanceId);
+                    BentoGUI.FocusSceneObject(risks[0].objectInstanceId);
                 if (GUILayout.Button($"选中全部风险对象（{risks.Count}）", GUILayout.Height(28)))
                     Selection.objects = risks
                         .Select(entry => EditorUtility.InstanceIDToObject(entry.objectInstanceId))
@@ -245,7 +245,7 @@ namespace Bento
                 {
                     EditorGUILayout.LabelField(entry.objectPath, EditorStyles.miniLabel);
                     if (GUILayout.Button("定位", GUILayout.Width(58)))
-                        FocusObject(entry.objectInstanceId);
+                        BentoGUI.FocusSceneObject(entry.objectInstanceId);
                 }
             }
 
@@ -360,15 +360,6 @@ namespace Bento
         static void SetVisibleIncluded(IEnumerable<HierarchyOrganizationEntry> entries, bool included)
         {
             foreach (var entry in entries) entry.include = included;
-        }
-
-        static void FocusObject(int instanceId)
-        {
-            var gameObject = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
-            if (gameObject == null) return;
-            Selection.activeGameObject = gameObject;
-            EditorGUIUtility.PingObject(gameObject);
-            SceneView.lastActiveSceneView?.FrameSelected();
         }
 
         static bool TryGetSingleSelectedSceneTransform(out Transform transform)

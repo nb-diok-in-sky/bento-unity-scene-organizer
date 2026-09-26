@@ -76,9 +76,8 @@ namespace Bento
             if (_plan.Count == 0) return;
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("全选可执行", GUILayout.Width(90))) foreach (var entry in _plan) entry.include = ModelImportWorkflowPlanner.CanExecute(entry, BuildOptions());
-                if (GUILayout.Button("全不选", GUILayout.Width(70))) foreach (var entry in _plan) entry.include = false;
-                if (GUILayout.Button("反选", GUILayout.Width(60))) foreach (var entry in _plan) entry.include = !entry.include && ModelImportWorkflowPlanner.CanExecute(entry, BuildOptions());
+                BentoGUI.DrawIncludeButtons(_plan, entry => entry.include, (entry, value) => entry.include = value,
+                    entry => ModelImportWorkflowPlanner.CanExecute(entry, BuildOptions()), "全选可执行", 90);
             }
             _scroll = EditorGUILayout.BeginScrollView(_scroll, GUILayout.MinHeight(240), GUILayout.MaxHeight(620));
             foreach (var entry in _plan)
@@ -89,7 +88,7 @@ namespace Bento
                     {
                         entry.include = EditorGUILayout.Toggle(entry.include, GUILayout.Width(18));
                         EditorGUILayout.ObjectField(entry.material.fbx, typeof(GameObject), false);
-                        if (GUILayout.Button("定位", GUILayout.Width(44))) { Selection.activeObject = entry.material.fbx; EditorGUIUtility.PingObject(entry.material.fbx); }
+                        BentoGUI.LocateButton(entry.material.fbx);
                     }
                     EditorGUILayout.LabelField("来源：" + entry.rootFolder, EditorStyles.miniLabel);
                     if (_createMaterials) EditorGUILayout.LabelField("材质：" + entry.material.note, EditorStyles.miniLabel);

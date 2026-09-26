@@ -39,9 +39,7 @@ namespace Bento
             if (_entries.Count == 0) return;
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("全选", GUILayout.Width(60))) foreach (var entry in _entries) entry.include = true;
-                if (GUILayout.Button("全不选", GUILayout.Width(70))) foreach (var entry in _entries) entry.include = false;
-                if (GUILayout.Button("反选", GUILayout.Width(60))) foreach (var entry in _entries) entry.include = !entry.include;
+                BentoGUI.DrawIncludeButtons(_entries, entry => entry.include, (entry, value) => entry.include = value);
             }
             _scroll = EditorGUILayout.BeginScrollView(_scroll, GUILayout.MinHeight(260), GUILayout.MaxHeight(620));
             foreach (var entry in _entries)
@@ -51,7 +49,7 @@ namespace Bento
                     entry.include = EditorGUILayout.Toggle(entry.include, GUILayout.Width(18));
                     EditorGUILayout.ObjectField(entry.asset, typeof(UnityEngine.Object), false, GUILayout.Width(180));
                     EditorGUILayout.SelectableLabel(entry.path, EditorStyles.miniLabel, GUILayout.Height(18));
-                    if (GUILayout.Button("定位", GUILayout.Width(44))) { Selection.activeObject = entry.asset; EditorGUIUtility.PingObject(entry.asset); }
+                    BentoGUI.LocateButton(entry.asset);
                 }
             }
             EditorGUILayout.EndScrollView();

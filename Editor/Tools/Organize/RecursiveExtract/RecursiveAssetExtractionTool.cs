@@ -41,9 +41,8 @@ namespace Bento
             if (_plan.Count == 0) return;
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("全选无冲突项", GUILayout.Width(100))) foreach (var entry in _plan) entry.include = string.IsNullOrEmpty(entry.warning);
-                if (GUILayout.Button("全不选", GUILayout.Width(70))) foreach (var entry in _plan) entry.include = false;
-                if (GUILayout.Button("反选", GUILayout.Width(60))) foreach (var entry in _plan) entry.include = !entry.include;
+                BentoGUI.DrawIncludeButtons(_plan, entry => entry.include, (entry, value) => entry.include = value,
+                    entry => string.IsNullOrEmpty(entry.warning), "全选无冲突项", 100);
                 using (new EditorGUI.DisabledScope(_history == null || _history.moves.Count == 0))
                     if (GUILayout.Button("恢复上次移动", GUILayout.Width(100)) && BentoCommand.Confirm("恢复移动", "把上次抽取的资产恢复到原目录。", "恢复"))
                         BentoCommand.Run("恢复失败", () => { SafeAssetMoveService.Restore(_history); _history = null; Scan(sourceFolder, targetFolder); });

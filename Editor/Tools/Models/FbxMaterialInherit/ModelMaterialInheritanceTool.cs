@@ -81,7 +81,7 @@ namespace Bento
                         }
                     GUILayout.FlexibleSpace();
                     using (new EditorGUI.DisabledScope(value == null))
-                        if (GUILayout.Button("定位", GUILayout.Width(60))) Ping(value);
+                        if (GUILayout.Button("定位", GUILayout.Width(60))) BentoGUI.Locate(value);
                 }
             }
         }
@@ -106,8 +106,8 @@ namespace Bento
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     using (new EditorGUI.DisabledScope(entry.sourceRenderer == null))
-                        if (GUILayout.Button("定位参考子物体")) Ping(entry.sourceRenderer != null ? entry.sourceRenderer.gameObject : null);
-                    if (GUILayout.Button("定位待修复子物体")) Ping(entry.targetRenderer.gameObject);
+                        if (GUILayout.Button("定位参考子物体")) BentoGUI.Locate(entry.sourceRenderer != null ? entry.sourceRenderer.gameObject : null);
+                    if (GUILayout.Button("定位待修复子物体")) BentoGUI.Locate(entry.targetRenderer.gameObject);
                 }
             }
             EditorGUILayout.EndScrollView();
@@ -231,13 +231,6 @@ namespace Bento
                 current = current.parent;
             }
             return names.Count == 0 ? root.name : string.Join("/", names);
-        }
-
-        static void Ping(UnityEngine.Object asset)
-        {
-            if (asset == null) return;
-            Selection.activeObject = asset;
-            EditorGUIUtility.PingObject(asset);
         }
 
         public void OnActivated() { }
