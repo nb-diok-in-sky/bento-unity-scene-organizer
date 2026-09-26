@@ -8,7 +8,7 @@ namespace Bento
     /// Shared conversion between path-change histories (move / rename) and persisted operation records.
     /// Both operations store the same GUID + before/after path pairs and are undone by moving back.
     /// </summary>
-    public abstract class AssetPathOperationHandler : IRecoverableAssetOperation
+    abstract class AssetPathOperationHandler : IRecoverableAssetOperation
     {
         public abstract string OperationType { get; }
 
@@ -49,7 +49,7 @@ namespace Bento
         }
     }
 
-    public sealed class AssetMoveOperationHandler : AssetPathOperationHandler
+    sealed class AssetMoveOperationHandler : AssetPathOperationHandler
     {
         public const string Type = "asset_move";
         public override string OperationType => Type;
@@ -61,7 +61,7 @@ namespace Bento
             CreateRecord(Type, "资产移动", history?.moves, history?.createdAtUtc);
     }
 
-    public sealed class AssetRenameOperationHandler : AssetPathOperationHandler
+    sealed class AssetRenameOperationHandler : AssetPathOperationHandler
     {
         public const string Type = "asset_rename";
         public override string OperationType => Type;

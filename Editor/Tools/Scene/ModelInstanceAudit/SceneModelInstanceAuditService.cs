@@ -8,7 +8,7 @@ using UnityEngine.SceneManagement;
 
 namespace Bento
 {
-    public static class SceneModelInstanceAuditService
+    static class SceneModelInstanceAuditService
     {
         static readonly string[] ModelExtensions = { ".fbx", ".obj" };
 

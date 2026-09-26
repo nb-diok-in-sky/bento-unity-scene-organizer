@@ -27,14 +27,14 @@ namespace Bento
             return current;
         }
 
-        public static void DrawNamingFields(AssetNamingOptions options, string baseNameLabel)
+        internal static void DrawNamingFields(AssetNamingOptions options, string baseNameLabel)
         {
             options.prefix = EditorGUILayout.TextField("前缀", options.prefix);
             options.baseName = EditorGUILayout.TextField(baseNameLabel, options.baseName);
             DrawNamingAffixesAndNumbering(options, drawPrefix: false);
         }
 
-        public static void DrawNamingAffixesAndNumbering(
+        internal static void DrawNamingAffixesAndNumbering(
             AssetNamingOptions options,
             bool drawPrefix = true)
         {

@@ -3,7 +3,7 @@ using System;
 namespace Bento
 {
     [Serializable]
-    public sealed class ObjMaterialDefinition
+    sealed class ObjMaterialDefinition
     {
         public string name;
         public string albedoFile;

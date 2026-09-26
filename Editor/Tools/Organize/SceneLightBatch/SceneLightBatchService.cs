@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public sealed class SceneLightBatchPlan
+    sealed class SceneLightBatchPlan
     {
         public readonly List<GameObject> roots = new List<GameObject>();
         public readonly List<Light> lights = new List<Light>();
@@ -18,7 +18,7 @@ namespace Bento
         public int childLightCount;
     }
 
-    public static class SceneLightBatchService
+    static class SceneLightBatchService
     {
         public static SceneLightBatchPlan BuildPlan(IEnumerable<GameObject> roots)
         {

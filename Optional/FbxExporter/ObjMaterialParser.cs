@@ -5,7 +5,7 @@ using System.IO;
 
 namespace Bento
 {
-    public static class ObjMaterialParser
+    static class ObjMaterialParser
     {
         public static List<ObjMaterialDefinition> Parse(string mtlAbsolutePath)
         {

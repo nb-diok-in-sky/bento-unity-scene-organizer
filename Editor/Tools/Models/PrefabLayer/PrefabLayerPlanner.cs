@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public static class PrefabLayerPlanner
+    static class PrefabLayerPlanner
     {
         public static List<PrefabLayerPlanEntry> Build(IEnumerable<UnityEngine.Object> selection)
         {

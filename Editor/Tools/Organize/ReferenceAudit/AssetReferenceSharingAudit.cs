@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public static class AssetReferenceSharingAudit
+    static class AssetReferenceSharingAudit
     {
         const string OutputPath = "Temp/Bento_asset_reference_sharing_audit.json";
         [Serializable]

@@ -3,7 +3,7 @@ using System.Linq;
 
 namespace Bento
 {
-    public static class HierarchyOrganizationSession
+    static class HierarchyOrganizationSession
     {
         static readonly List<HierarchyOrganizationEntry> PendingEntries = new List<HierarchyOrganizationEntry>();
 

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Bento
 {
     [Serializable]
-    public sealed class AssetOperationItem
+    sealed class AssetOperationItem
     {
         public string assetGuid;
         public string beforePath;
@@ -12,7 +12,7 @@ namespace Bento
     }
 
     [Serializable]
-    public sealed class AssetOperationRecord
+    sealed class AssetOperationRecord
     {
         public string id;
         public string operationType;

@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public static class HierarchyGroupCreationService
+    static class HierarchyGroupCreationService
     {
         public static GameObject CreateParentForSelection(string groupName)
         {

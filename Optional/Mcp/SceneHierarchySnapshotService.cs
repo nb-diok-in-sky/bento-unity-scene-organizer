@@ -10,14 +10,14 @@ using UnityEngine.SceneManagement;
 namespace Bento
 {
     [Serializable]
-    public sealed class SceneHierarchySnapshot
+    sealed class SceneHierarchySnapshot
     {
         public string createdAtUtc;
         public List<SceneHierarchySceneInfo> scenes = new List<SceneHierarchySceneInfo>();
     }
 
     [Serializable]
-    public sealed class SceneHierarchySceneInfo
+    sealed class SceneHierarchySceneInfo
     {
         public string name;
         public string path;
@@ -26,7 +26,7 @@ namespace Bento
     }
 
     [Serializable]
-    public sealed class SceneHierarchyNodeInfo
+    sealed class SceneHierarchyNodeInfo
     {
         public int instanceId;
         public string name;
@@ -48,7 +48,7 @@ namespace Bento
     }
 
     [Serializable]
-    public struct SceneHierarchyVector3
+    struct SceneHierarchyVector3
     {
         public float x;
         public float y;
@@ -62,7 +62,7 @@ namespace Bento
         };
     }
 
-    public static class SceneHierarchySnapshotService
+    static class SceneHierarchySnapshotService
     {
         const string OutputFolder = "Bento_Hierarchy快照";
 

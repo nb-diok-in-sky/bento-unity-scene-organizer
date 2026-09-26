@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public enum PrefabLayerApplyMode
+    enum PrefabLayerApplyMode
     {
         DefaultNodesOnly,
         RootOnly,
@@ -12,7 +12,7 @@ namespace Bento
     }
 
     [Serializable]
-    public class PrefabLayerPlanEntry
+    class PrefabLayerPlanEntry
     {
         public string assetPath;
         public string assetGuid;
@@ -28,7 +28,7 @@ namespace Bento
     }
 
     [Serializable]
-    public class PrefabLayerChangeRecord
+    class PrefabLayerChangeRecord
     {
         public string hierarchyPath;
         public string siblingIndexPath;
@@ -37,7 +37,7 @@ namespace Bento
     }
 
     [Serializable]
-    public class PrefabLayerHistoryEntry
+    class PrefabLayerHistoryEntry
     {
         public string assetGuid;
         public string assetPath;
@@ -45,12 +45,12 @@ namespace Bento
     }
 
     [Serializable]
-    public class PrefabLayerHistory
+    class PrefabLayerHistory
     {
         public List<PrefabLayerHistoryEntry> entries = new List<PrefabLayerHistoryEntry>();
     }
 
-    public static class ProjectLayerCatalog
+    static class ProjectLayerCatalog
     {
         public static List<string> GetDefinedNames()
         {

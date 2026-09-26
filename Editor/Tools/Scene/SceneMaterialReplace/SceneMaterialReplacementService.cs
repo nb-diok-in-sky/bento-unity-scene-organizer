@@ -8,10 +8,10 @@ using UnityEngine.SceneManagement;
 
 namespace Bento
 {
-    public enum SceneMaterialReplaceMode { AllSlots, MatchingMaterial }
-    public enum SceneMaterialReplaceScope { SelectedHierarchy, LoadedScenes }
+    enum SceneMaterialReplaceMode { AllSlots, MatchingMaterial }
+    enum SceneMaterialReplaceScope { SelectedHierarchy, LoadedScenes }
 
-    public sealed class SceneMaterialReplacementPlan
+    sealed class SceneMaterialReplacementPlan
     {
         public SceneMaterialReplaceScope scope;
         public readonly List<GameObject> roots = new List<GameObject>();
@@ -19,7 +19,7 @@ namespace Bento
         public int slotCount;
     }
 
-    public static class SceneMaterialReplacementService
+    static class SceneMaterialReplacementService
     {
         public static SceneMaterialReplacementPlan BuildPlan(IEnumerable<GameObject> roots, SceneMaterialReplaceMode mode, Material sourceMaterial)
         {

@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Bento
 {
     [BentoPage("prefab_replace", BentoGroups.Scene, "预制体替换", Order = 40)]
-    public class PrefabReplacer : IBentoTool
+    class PrefabReplacer : IBentoTool
     {
         static readonly string[] ModeNames = { "替换选中对象", "按名称批量替换" };
         readonly PrefabReplacementOptions _options = new PrefabReplacementOptions();

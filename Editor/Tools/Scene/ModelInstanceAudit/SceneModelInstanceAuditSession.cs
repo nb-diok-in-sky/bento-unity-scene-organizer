@@ -1,6 +1,6 @@
 namespace Bento
 {
-    public static class SceneModelInstanceAuditSession
+    static class SceneModelInstanceAuditSession
     {
         static SceneModelInstanceAuditResult _current;
 

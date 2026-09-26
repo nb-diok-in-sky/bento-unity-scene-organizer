@@ -7,7 +7,7 @@ using UnityEditor;
 namespace Bento
 {
     [Serializable]
-    public class AssetRenameEntry
+    class AssetRenameEntry
     {
         public string sourcePath;
         public string targetPath;
@@ -17,12 +17,12 @@ namespace Bento
     }
 
     [Serializable]
-    public class AssetRenameHistory
+    class AssetRenameHistory
     {
         public List<AssetMoveHistoryEntry> renames = new List<AssetMoveHistoryEntry>();
     }
 
-    public static class SafeAssetRenameService
+    static class SafeAssetRenameService
     {
         static readonly AssetPathTransaction Transaction = new AssetPathTransaction();
 

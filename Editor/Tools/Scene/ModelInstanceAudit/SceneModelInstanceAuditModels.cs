@@ -3,14 +3,14 @@ using System.Collections.Generic;
 
 namespace Bento
 {
-    public enum SceneModelInstanceAuditScope
+    enum SceneModelInstanceAuditScope
     {
         Selection,
         LoadedScenes
     }
 
     [Serializable]
-    public sealed class SceneModelInstanceAuditRecord
+    sealed class SceneModelInstanceAuditRecord
     {
         public int instanceId;
         public string objectName;
@@ -21,7 +21,7 @@ namespace Bento
     }
 
     [Serializable]
-    public sealed class SceneModelInstanceAuditResult
+    sealed class SceneModelInstanceAuditResult
     {
         public string scannedAtUtc;
         public SceneModelInstanceAuditScope scope;

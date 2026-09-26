@@ -2,13 +2,13 @@ using System.Collections.Generic;
 
 namespace Bento
 {
-    public enum HierarchyCompensationMode
+    enum HierarchyCompensationMode
     {
         Individual,
         Shared
     }
 
-    public sealed class HierarchyCompensationPreview
+    sealed class HierarchyCompensationPreview
     {
         public HierarchyCompensationMode mode;
         public bool canExecute;

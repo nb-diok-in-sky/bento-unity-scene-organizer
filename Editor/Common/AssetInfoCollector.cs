@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public static class AssetInfoCollector
+    static class AssetInfoCollector
     {
         public static AssetInfoExportDocument Collect(IEnumerable<UnityEngine.Object> selection)
         {
@@ -157,7 +157,7 @@ namespace Bento
         }
     }
 
-    public static class AssetInfoJsonExporter
+    static class AssetInfoJsonExporter
     {
         public static void Export(AssetInfoExportDocument document, string absolutePath)
         {

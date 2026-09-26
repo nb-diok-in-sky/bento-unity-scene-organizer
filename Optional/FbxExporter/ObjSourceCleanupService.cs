@@ -6,7 +6,7 @@ using UnityEditor;
 
 namespace Bento
 {
-    public sealed class ObjSourceCleanupPlan
+    sealed class ObjSourceCleanupPlan
     {
         public string objAssetPath;
         public string mtlAssetPath;
@@ -15,14 +15,14 @@ namespace Bento
         public string[] protectedDependencies = Array.Empty<string>();
     }
 
-    public sealed class ObjSourceCleanupResult
+    sealed class ObjSourceCleanupResult
     {
         public readonly List<string> deletedPaths = new List<string>();
         public readonly List<string> failedPaths = new List<string>();
         public bool succeeded => failedPaths.Count == 0;
     }
 
-    public sealed class ObjSourceCleanupException : Exception
+    sealed class ObjSourceCleanupException : Exception
     {
         public ObjSourceCleanupResult Result { get; }
 
@@ -36,7 +36,7 @@ namespace Bento
         }
     }
 
-    public static class ObjSourceCleanupService
+    static class ObjSourceCleanupService
     {
         public static ObjSourceCleanupPlan BuildPlan(string objAssetPath, string mtlAssetPath, string fbxAssetPath)
         {

@@ -4,13 +4,13 @@ using System.Linq;
 
 namespace Bento
 {
-    public interface IRecoverableAssetOperation
+    interface IRecoverableAssetOperation
     {
         string OperationType { get; }
         void Restore(AssetOperationRecord record);
     }
 
-    public sealed class AssetOperationHistoryService
+    sealed class AssetOperationHistoryService
     {
         readonly IAssetOperationHistoryRepository _repository;
         readonly Dictionary<string, IRecoverableAssetOperation> _handlers;
@@ -64,7 +64,7 @@ namespace Bento
         }
     }
 
-    public sealed class AssetOperationHistoryStateException : Exception
+    sealed class AssetOperationHistoryStateException : Exception
     {
         public AssetOperationRecord Record { get; }
 
@@ -77,7 +77,7 @@ namespace Bento
         }
     }
 
-    public static class AssetOperationHistory
+    static class AssetOperationHistory
     {
         static readonly AssetOperationHistoryService Service = new AssetOperationHistoryService(
             new AssetOperationHistoryRepository(),

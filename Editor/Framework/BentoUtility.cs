@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public static class BentoUtility
+    static class BentoUtility
     {
         public static string GetProjectEditorPrefsKey(string prefix)
         {

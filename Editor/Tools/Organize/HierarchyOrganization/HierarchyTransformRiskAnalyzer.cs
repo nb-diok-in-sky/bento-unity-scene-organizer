@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public static class HierarchyTransformRiskAnalyzer
+    static class HierarchyTransformRiskAnalyzer
     {
         const float MatrixTolerance = 0.0001f;
 

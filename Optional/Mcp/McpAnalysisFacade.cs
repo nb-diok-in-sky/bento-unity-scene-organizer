@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public static class McpAnalysisFacade
+    static class McpAnalysisFacade
     {
         public static object AnalyzeResourceVariant(AssetNamingOptions naming)
         {

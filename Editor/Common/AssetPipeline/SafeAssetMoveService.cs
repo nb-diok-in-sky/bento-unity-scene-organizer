@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace Bento
 {
-    public static class SafeAssetMoveService
+    static class SafeAssetMoveService
     {
         static readonly CompositeAssetMovePolicy Policy = new CompositeAssetMovePolicy(
             new IAssetMoveRule[]

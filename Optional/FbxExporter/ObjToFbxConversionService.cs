@@ -8,7 +8,7 @@ using UnityEngine;
 namespace Bento
 {
     [Serializable]
-    public sealed class ObjToFbxConversionRequest
+    sealed class ObjToFbxConversionRequest
     {
         public string objAssetPath;
         public string mtlAssetPath;
@@ -17,13 +17,13 @@ namespace Bento
         public string materialFolder;
     }
 
-    public sealed class ObjToFbxConversionResult
+    sealed class ObjToFbxConversionResult
     {
         public string fbxAssetPath;
         public readonly List<string> createdAssetPaths = new List<string>();
     }
 
-    public sealed class ObjToFbxConversionException : Exception
+    sealed class ObjToFbxConversionException : Exception
     {
         public ObjToFbxConversionResult Result { get; }
 
@@ -42,7 +42,7 @@ namespace Bento
         }
     }
 
-    public static class ObjToFbxConversionService
+    static class ObjToFbxConversionService
     {
         public static ObjToFbxConversionResult Convert(ObjToFbxConversionRequest request)
         {

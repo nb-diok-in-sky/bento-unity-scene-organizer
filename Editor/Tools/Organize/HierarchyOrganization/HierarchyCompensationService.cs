@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public static class HierarchyCompensationService
+    static class HierarchyCompensationService
     {
         const string NodePrefix = "__Bento_TransformCompensation__";
 

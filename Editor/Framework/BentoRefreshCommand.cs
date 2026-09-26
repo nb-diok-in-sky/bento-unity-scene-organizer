@@ -5,7 +5,7 @@ using Debug = UnityEngine.Debug;
 
 namespace Bento
 {
-    public static class BentoRefreshCommand
+    static class BentoRefreshCommand
     {
         [MenuItem("Tools/Bento/刷新并输出日志", priority = -9990)]
         public static void RefreshWithFeedback()

@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public enum AssetMoveKind
+    enum AssetMoveKind
     {
         PrefabOrModel,
         Material,
@@ -14,7 +14,7 @@ namespace Bento
     }
 
     [Serializable]
-    public class AssetMoveEntry
+    class AssetMoveEntry
     {
         public UnityEngine.Object asset;
         public string sourcePath;
@@ -32,7 +32,7 @@ namespace Bento
     }
 
     [Serializable]
-    public class AssetMoveHistoryEntry
+    class AssetMoveHistoryEntry
     {
         public string guid;
         public string oldPath;
@@ -40,14 +40,14 @@ namespace Bento
     }
 
     [Serializable]
-    public class AssetMoveHistory
+    class AssetMoveHistory
     {
         public string createdAtUtc;
         public List<AssetMoveHistoryEntry> moves = new List<AssetMoveHistoryEntry>();
     }
 
     [Serializable]
-    public class AssetMoveManifest
+    class AssetMoveManifest
     {
         public string createdAtUtc;
         public string projectRoot;

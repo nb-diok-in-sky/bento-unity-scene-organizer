@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public static class HierarchyOrganizationService
+    static class HierarchyOrganizationService
     {
         public static List<HierarchyOrganizationEntry> BuildFromSelection(Transform parent)
         {

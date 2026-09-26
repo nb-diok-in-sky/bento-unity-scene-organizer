@@ -4,14 +4,14 @@ using System.Collections.Generic;
 namespace Bento
 {
     [Serializable]
-    public sealed class HierarchyOrganizationPlan
+    sealed class HierarchyOrganizationPlan
     {
         public string scenePath;
         public List<HierarchyOrganizationEntry> entries = new List<HierarchyOrganizationEntry>();
     }
 
     [Serializable]
-    public sealed class HierarchyOrganizationEntry
+    sealed class HierarchyOrganizationEntry
     {
         public int objectInstanceId;
         public string objectPath;

@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public static class UsedAssetSelectionDiagnosticService
+    static class UsedAssetSelectionDiagnosticService
     {
         public static string BuildFromCurrentSelection()
         {

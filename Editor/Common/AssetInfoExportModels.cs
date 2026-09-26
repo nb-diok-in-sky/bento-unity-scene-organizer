@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Bento
 {
     [Serializable]
-    public class AssetInfoExportDocument
+    class AssetInfoExportDocument
     {
         public string schemaVersion = "bento.asset-info.v1";
         public string exportedAtUtc;
@@ -13,7 +13,7 @@ namespace Bento
     }
 
     [Serializable]
-    public class AssetInfoRecord
+    class AssetInfoRecord
     {
         public string originalName;
         public string inferredObject = "环境资产/待 AI 或人工补充语义";
@@ -32,7 +32,7 @@ namespace Bento
     }
 
     [Serializable]
-    public class AssetInfoBounds
+    class AssetInfoBounds
     {
         public float x;
         public float y;
@@ -42,7 +42,7 @@ namespace Bento
     }
 
     [Serializable]
-    public class AssetInfoNode
+    class AssetInfoNode
     {
         public string name;
         public string hierarchyPath;
@@ -59,7 +59,7 @@ namespace Bento
     }
 
     [Serializable]
-    public class AssetInfoMaterial
+    class AssetInfoMaterial
     {
         public string name;
         public string assetPath;
@@ -68,7 +68,7 @@ namespace Bento
     }
 
     [Serializable]
-    public class AssetInfoTexture
+    class AssetInfoTexture
     {
         public string property;
         public string name;
@@ -76,7 +76,7 @@ namespace Bento
     }
 
     [Serializable]
-    public class AssetInfoCollider
+    class AssetInfoCollider
     {
         public string type;
         public bool enabled;

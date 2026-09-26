@@ -6,14 +6,14 @@ using UnityEngine;
 
 namespace Bento
 {
-    public interface IAssetOperationHistoryRepository
+    interface IAssetOperationHistoryRepository
     {
         void Save(AssetOperationRecord record);
         IReadOnlyList<AssetOperationRecord> LoadAll();
         AssetOperationRecord Load(string id);
     }
 
-    public sealed class AssetOperationHistoryRepository : IAssetOperationHistoryRepository
+    sealed class AssetOperationHistoryRepository : IAssetOperationHistoryRepository
     {
         static readonly string DirectoryPath = Path.GetFullPath(Path.Combine(Application.dataPath, "../Library/Bento/OperationHistory"));
 

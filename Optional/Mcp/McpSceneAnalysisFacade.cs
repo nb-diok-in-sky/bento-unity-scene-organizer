@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 
 namespace Bento
 {
-    public static class McpSceneAnalysisFacade
+    static class McpSceneAnalysisFacade
     {
         public static object GetSelection()
         {

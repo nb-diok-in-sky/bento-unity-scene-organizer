@@ -3,7 +3,7 @@
 namespace Bento
 {
     [Serializable]
-    public class AssetNamingOptions
+    class AssetNamingOptions
     {
         public string prefix = "";
         public string baseName = "";
@@ -13,7 +13,7 @@ namespace Bento
         public int numberDigits = 2;
     }
 
-    public static class AssetNaming
+    static class AssetNaming
     {
         public static string BuildName(string originalName, int index, AssetNamingOptions options)
         {

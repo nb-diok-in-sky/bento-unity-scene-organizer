@@ -8,9 +8,9 @@ using UnityEngine.Rendering;
 
 namespace Bento
 {
-    public enum RendererShadowReceiveOption { NoChange, Disabled, Enabled }
+    enum RendererShadowReceiveOption { NoChange, Disabled, Enabled }
 
-    public sealed class SceneRendererShadowPlan
+    sealed class SceneRendererShadowPlan
     {
         public readonly List<GameObject> roots = new List<GameObject>();
         public readonly List<Renderer> renderers = new List<Renderer>();
@@ -22,7 +22,7 @@ namespace Bento
         public int receiveOnCount;
     }
 
-    public static class SceneRendererShadowBatchService
+    static class SceneRendererShadowBatchService
     {
         public static SceneRendererShadowPlan BuildPlan(IEnumerable<GameObject> roots)
         {

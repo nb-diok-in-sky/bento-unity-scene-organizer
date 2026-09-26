@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Bento
 {
-    public static class PrefabLayerService
+    static class PrefabLayerService
     {
         public static PrefabLayerHistory Apply(IReadOnlyList<PrefabLayerPlanEntry> plan, PrefabLayerApplyMode mode)
         {
