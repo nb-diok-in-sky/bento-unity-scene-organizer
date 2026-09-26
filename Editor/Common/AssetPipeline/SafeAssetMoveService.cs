@@ -15,7 +15,7 @@ namespace Bento
             },
             new IAssetMovePlanRule[] { new AssetMovePlanConsistencyRule() });
         static readonly AssetMovePlanner Planner = new AssetMovePlanner(Policy);
-        static readonly AssetMoveExecutor Executor = new AssetMoveExecutor(Policy, new AssetPathTransaction());
+        static readonly AssetPathTransaction Transaction = new AssetPathTransaction();
 
         public static List<AssetMoveEntry> BuildPlan(
             IEnumerable<UnityEngine.Object> selectedAssets,
@@ -73,8 +73,25 @@ namespace Bento
             { AssetMoveKind.Other, otherFolder }
         };
 
-        public static void Execute(IReadOnlyList<AssetMoveEntry> entries, AssetMoveHistory history) => Executor.Execute(entries, history);
-        public static void Restore(AssetMoveHistory history) => Executor.Restore(history);
+        public static void Execute(IReadOnlyList<AssetMoveEntry> entries, AssetMoveHistory history)
+        {
+            List<AssetMoveEntry> included = entries.Where(entry => entry.include).ToList();
+            Policy.ValidatePlan(included);
+            if (history == null) throw new ArgumentNullException(nameof(history));
+
+            history.createdAtUtc = DateTime.UtcNow.ToString("O");
+            Transaction.Execute(
+                included.Select(entry => new AssetMoveHistoryEntry
+                {
+                    guid = entry.sourceGuid,
+                    oldPath = entry.sourcePath,
+                    newPath = entry.targetPath
+                }),
+                history.moves,
+                "资源移动失败，且自动回滚未完成。历史已保留，请立即人工恢复。");
+        }
+
+        public static void Restore(AssetMoveHistory history) => Transaction.Restore(history?.moves);
 
         public static List<AssetMoveEntry> BuildFlatExtractionPlan(IEnumerable<UnityEngine.Object> assets, string targetFolder)
         {
