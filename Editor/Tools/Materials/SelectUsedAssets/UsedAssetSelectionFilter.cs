@@ -16,7 +16,6 @@ namespace Bento
         public static bool IsSupportedRenderer(Renderer renderer)
         {
             if (renderer == null) return false;
-            if (renderer is Terrain) return false;
             return renderer.GetComponentInParent<Terrain>() == null;
         }
 
