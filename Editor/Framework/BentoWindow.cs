@@ -55,6 +55,13 @@ namespace Bento
             return window;
         }
 
+        /// <summary>Repaints every open toolbox window, e.g. after a background state change.</summary>
+        public static void RepaintOpenWindows()
+        {
+            foreach (BentoWindow window in Resources.FindObjectsOfTypeAll<BentoWindow>())
+                window.Repaint();
+        }
+
         public string CurrentPageName
         {
             get

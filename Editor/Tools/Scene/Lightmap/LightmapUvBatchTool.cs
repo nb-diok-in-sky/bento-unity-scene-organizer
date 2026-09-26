@@ -228,13 +228,13 @@ namespace Bento
         }
     }
 
-    public sealed class LightmapUvBatchWindow : EditorWindow
+    [BentoPage("lightmap_uv_bake", BentoGroups.Scene, "烘焙光照", Order = 70)]
+    sealed class LightmapUvBatchTool : IBentoTool, IBentoPageLifecycle
     {
-        [SerializeField] List<GameObject> _dynamicLightRoots = new List<GameObject>();
-        [SerializeField] List<GameObject> _staticLightRoots = new List<GameObject>();
+        readonly List<GameObject> _dynamicLightRoots = new List<GameObject>();
+        readonly List<GameObject> _staticLightRoots = new List<GameObject>();
         readonly List<LightmapUvModelEntry> _entries = new List<LightmapUvModelEntry>();
         readonly List<LightmapUvImportHistoryEntry> _lastHistory = new List<LightmapUvImportHistoryEntry>();
-        Vector2 _windowScroll;
         Vector2 _scroll;
         bool _includeInactive = true;
         int _selectedRootCount;
@@ -242,17 +242,10 @@ namespace Bento
         int _unsupportedMeshCount;
         string _message = string.Empty;
 
-        [MenuItem("Tools/Bento/烘培光照", priority = -9990)]
-        public static void Open()
-        {
-            var window = GetWindow<LightmapUvBatchWindow>("烘培光照");
-            window.minSize = new Vector2(620f, 480f);
-            window.RefreshFromSelection();
-            window.Show();
-            window.Focus();
-        }
+        [MenuItem("Tools/Bento/烘焙光照", priority = -9990)]
+        static void Open() => BentoWindow.OpenPage<LightmapUvBatchTool>();
 
-        void OnEnable()
+        public void OnActivated()
         {
             LightmapBakePoolController.StateChanged -= OnBakeStateChanged;
             LightmapBakePoolController.StateChanged += OnBakeStateChanged;
@@ -261,22 +254,19 @@ namespace Bento
             RefreshFromSelection();
         }
 
-        void OnDisable()
+        public void OnDeactivated()
         {
             LightmapBakePoolController.StateChanged -= OnBakeStateChanged;
         }
 
-        void OnSelectionChange()
+        public void OnSelectionChanged()
         {
             _message = string.Empty;
             RefreshFromSelection();
-            Repaint();
         }
 
-        void OnGUI()
+        public void Draw()
         {
-            _windowScroll = EditorGUILayout.BeginScrollView(_windowScroll);
-            EditorGUILayout.LabelField("烘培光照", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 "读取 Hierarchy 当前选中物体及其子物体的 MeshFilter.sharedMesh，按 FBX/OBJ 模型资产去重，一键开启或关闭 Model Import Settings 中的 Generate Lightmap UVs。不会扫描整个 Project。",
                 MessageType.Info);
@@ -287,7 +277,6 @@ namespace Bento
             DrawEntries();
             EditorGUILayout.Space(12f);
             DrawLightPoolsAndBake();
-            EditorGUILayout.EndScrollView();
         }
 
         void DrawSelectionOptions()
@@ -609,10 +598,7 @@ namespace Bento
             roots.RemoveAll(root => root == null || !root.scene.IsValid() || !root.scene.isLoaded);
         }
 
-        void OnBakeStateChanged()
-        {
-            Repaint();
-        }
+        static void OnBakeStateChanged() => BentoWindow.RepaintOpenWindows();
 
         void RefreshFromSelection()
         {
@@ -684,7 +670,7 @@ namespace Bento
                 {
                     LightmapUvModelEntry entry = targets[index];
                     EditorUtility.DisplayProgressBar(
-                        "烘培光照",
+                        "烘焙光照",
                         $"正在{(enabled ? "开启" : "关闭")} Generate Lightmap UVs\n{entry.assetPath}",
                         (float)(index + 1) / targets.Length);
                     var importer = AssetImporter.GetAtPath(entry.assetPath) as ModelImporter ??
@@ -716,7 +702,6 @@ namespace Bento
             {
                 EditorUtility.ClearProgressBar();
                 RefreshFromSelection();
-                Repaint();
             }
         }
 
@@ -729,7 +714,7 @@ namespace Bento
                 {
                     LightmapUvImportHistoryEntry entry = history[index];
                     EditorUtility.DisplayProgressBar(
-                        "烘培光照",
+                        "烘焙光照",
                         $"正在恢复\n{entry.assetPath}",
                         (float)(index + 1) / history.Length);
                     var importer = AssetImporter.GetAtPath(entry.assetPath) as ModelImporter ??
@@ -751,7 +736,6 @@ namespace Bento
             {
                 EditorUtility.ClearProgressBar();
                 RefreshFromSelection();
-                Repaint();
             }
         }
 
