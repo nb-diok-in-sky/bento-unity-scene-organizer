@@ -7,7 +7,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    class TagLayerTab
+    [BentoPage("tag_layer", BentoGroups.Models, "Tag/Layer", Order = 50)]
+    class TagLayerTab : IBentoTool
     {
         Vector2 _scroll;
         int _selectedTag;

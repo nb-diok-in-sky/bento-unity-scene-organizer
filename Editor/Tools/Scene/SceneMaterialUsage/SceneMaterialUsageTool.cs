@@ -6,7 +6,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class SceneMaterialUsageTool
+    [BentoPage("scene_material_usage", BentoGroups.Scene, "查找材质使用对象", Order = 20)]
+    sealed class SceneMaterialUsageTool : IBentoTool
     {
         Material _material;
         Transform _scopeRoot;

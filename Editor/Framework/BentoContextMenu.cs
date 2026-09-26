@@ -18,43 +18,43 @@ namespace Bento
             if (context.HasSceneObjects)
             {
                 Add(menu, "选择/选中模型、材质和贴图", SelectUsedAssetsTool.SelectAdvancedFromCurrentSelection, ref count);
-                AddPage(menu, "场景/预制体替换", "prefab_replace", ref count);
-                AddPage(menu, "场景/Hierarchy 整理", "hierarchy_organization", ref count);
-                AddPage(menu, "场景/物体阴影批处理", "scene_renderer_shadow", ref count);
-                AddPage(menu, "材质/场景材质替换", "scene_material_replace", ref count);
+                AddPage<PrefabReplacer>(menu, "场景/预制体替换", ref count);
+                AddPage<HierarchyOrganizationTool>(menu, "场景/Hierarchy 整理", ref count);
+                AddPage<SceneRendererShadowBatchTool>(menu, "场景/物体阴影批处理", ref count);
+                AddPage<SceneMaterialReplacementTool>(menu, "材质/场景材质替换", ref count);
             }
 
             if (context.HasTerrain)
                 Add(menu, "Terrain/选中当前 Paint Texture 贴图", SelectTerrainPaintTexturesTool.SelectFromTerrainInspector, ref count);
 
             if (context.HasSceneLights)
-                AddPage(menu, "场景/光源批处理", "scene_light_batch", ref count);
+                AddPage<SceneLightBatchTool>(menu, "场景/光源批处理", ref count);
 
             if (context.HasProjectModels)
             {
                 Add(menu, "选择/选中模型、材质和贴图", SelectUsedAssetsTool.SelectAdvancedFromCurrentSelection, ref count);
-                AddPage(menu, "FBX/材质继承", "fbx_material_inherit", ref count);
-                AddPage(menu, "资源/创建资源变体", "resource_variant", ref count);
-                AddPage(menu, "资源/Prefab Layer", "prefab_layer", ref count);
+                AddPage<ModelMaterialInheritanceTool>(menu, "FBX/材质继承", ref count);
+                AddPage<ResourceVariantTool>(menu, "资源/创建资源变体", ref count);
+                AddPage<PrefabLayerTool>(menu, "资源/Prefab Layer", ref count);
             }
 
             if (context.HasMaterials)
             {
-                AddPage(menu, "材质/Shader 替换", "shader_replace", ref count);
+                AddPage<ShaderReplaceTab>(menu, "材质/Shader 替换", ref count);
             }
 
             if (context.HasFolders)
             {
-                AddPage(menu, "文件夹/收藏文件夹", "folder_favorites", ref count);
-                AddPage(menu, "文件夹/资产移动", "asset_move", ref count);
-                AddPage(menu, "文件夹/批量重命名", "batch_rename", ref count);
+                AddPage<ProjectFolderFavoritesTool>(menu, "文件夹/收藏文件夹", ref count);
+                AddPage<SafeAssetMoveTool>(menu, "文件夹/资产移动", ref count);
+                AddPage<BatchRenameTool>(menu, "文件夹/批量重命名", ref count);
             }
 
             if (context.HasProjectAssets)
             {
-                AddPage(menu, "资源/资产信息", "asset_info", ref count);
-                AddPage(menu, "资源/批量重命名", "batch_rename", ref count);
-                AddPage(menu, "资源/资产移动", "asset_move", ref count);
+                AddPage<AssetInfoExportTool>(menu, "资源/资产信息", ref count);
+                AddPage<BatchRenameTool>(menu, "资源/批量重命名", ref count);
+                AddPage<SafeAssetMoveTool>(menu, "资源/资产移动", ref count);
             }
 
             if (count == 0)
@@ -73,8 +73,8 @@ namespace Bento
             count++;
         }
 
-        static void AddPage(GenericMenu menu, string label, string pageId, ref int count) =>
-            Add(menu, label, () => BentoWindow.OpenPage(pageId), ref count);
+        static void AddPage<TTool>(GenericMenu menu, string label, ref int count) where TTool : IBentoTool =>
+            Add(menu, label, () => BentoWindow.OpenPage<TTool>(), ref count);
 
         sealed class SelectionContext
         {

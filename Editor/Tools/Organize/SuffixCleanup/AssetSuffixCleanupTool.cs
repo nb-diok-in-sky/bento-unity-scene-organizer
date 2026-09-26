@@ -13,7 +13,8 @@ namespace Bento
         public bool include = true;
     }
 
-    sealed class AssetSuffixCleanupTool
+    [BentoPage("suffix_cleanup", BentoGroups.Organize, "按后缀清理", Order = 60)]
+    sealed class AssetSuffixCleanupTool : IBentoTool
     {
         DefaultAsset _folder;
         string _suffixes = ".max";

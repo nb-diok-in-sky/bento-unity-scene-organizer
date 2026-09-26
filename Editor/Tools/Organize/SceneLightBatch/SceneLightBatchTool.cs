@@ -3,7 +3,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class SceneLightBatchTool : IBentoPageLifecycle
+    [BentoPage("scene_light_batch", BentoGroups.Organize, "场景光源批处理", Order = 90)]
+    sealed class SceneLightBatchTool : IBentoPageLifecycle, IBentoTool
     {
         LightShadows _targetShadows = LightShadows.Soft;
         readonly SelectionPlanCache<SceneLightBatchPlan> _selection =

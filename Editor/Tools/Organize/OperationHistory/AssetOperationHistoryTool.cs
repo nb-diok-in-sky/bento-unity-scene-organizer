@@ -5,7 +5,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class AssetOperationHistoryTool : IBentoPageLifecycle
+    [BentoPage("asset_operation_history", BentoGroups.Organize, "操作历史", Order = 40)]
+    sealed class AssetOperationHistoryTool : IBentoPageLifecycle, IBentoTool
     {
         IReadOnlyList<AssetOperationRecord> _records = Array.Empty<AssetOperationRecord>();
         Vector2 _scroll;

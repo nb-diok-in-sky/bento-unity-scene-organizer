@@ -5,7 +5,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class TerrainLayerGenerationTool
+    [BentoPage("terrain_layer_generation", BentoGroups.Materials, "Terrain Layer 生成", Order = 40)]
+    sealed class TerrainLayerGenerationTool : IBentoTool
     {
         DefaultAsset _outputFolder;
         string _outputFolderPath = string.Empty;

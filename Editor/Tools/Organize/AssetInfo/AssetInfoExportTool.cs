@@ -5,7 +5,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    class AssetInfoExportTool
+    [BentoPage("asset_info", BentoGroups.Organize, "资产信息", Order = 50)]
+    class AssetInfoExportTool : IBentoTool
     {
         AssetInfoExportDocument _document;
         Vector2 _scroll;

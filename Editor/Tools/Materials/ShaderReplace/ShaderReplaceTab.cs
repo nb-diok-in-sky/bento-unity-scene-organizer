@@ -4,7 +4,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    class ShaderReplaceTab
+    [BentoPage("shader_replace", BentoGroups.Materials, "Shader 替换", Order = 10)]
+    class ShaderReplaceTab : IBentoTool
     {
         Shader _targetShader;
         Vector2 _scroll;

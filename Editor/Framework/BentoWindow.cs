@@ -16,11 +16,10 @@ namespace Bento
 
         int _mainTab;
         int _groupTab;
-        List<IBentoPage> _pages;
-        string[] _pageNames;
+        List<RegisteredToolPage> _pages;
         string[] _groupNames;
-        IReadOnlyList<IBentoPage> _favoritePages;
-        IBentoPage _activePage;
+        IReadOnlyList<RegisteredToolPage> _favoritePages;
+        RegisteredToolPage _activePage;
         Vector2 _pageScroll;
         string _pageError;
         GUIStyle _titleStyle;
@@ -33,24 +32,23 @@ namespace Bento
         [MenuItem("Tools/Bento/工具箱", priority = -10000)]
         static void Open() => OpenPage(null);
 
-        public static BentoWindow OpenPage(string pageName)
+        /// <summary>Opens the toolbox on the page registered by <typeparamref name="TTool"/>.</summary>
+        public static BentoWindow OpenPage<TTool>() where TTool : IBentoTool =>
+            FindAndOpen(page => page.ToolType == typeof(TTool));
+
+        /// <summary>Opens the toolbox on the page whose id or display name matches <paramref name="pageName"/>.</summary>
+        public static BentoWindow OpenPage(string pageName) =>
+            FindAndOpen(page => string.Equals(page.Id, pageName, StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(page.Name, pageName, StringComparison.OrdinalIgnoreCase));
+
+        static BentoWindow FindAndOpen(Predicate<RegisteredToolPage> match)
         {
-            if (string.Equals(pageName, "hierarchy_rename", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(pageName, "project_asset_rename", StringComparison.OrdinalIgnoreCase))
-                pageName = "batch_rename";
-            else if (string.Equals(pageName, "material_tools", StringComparison.OrdinalIgnoreCase))
-                pageName = "select_used_assets";
             var window = GetWindow<BentoWindow>("Bento");
             window.minSize = new Vector2(760, 620);
             window.EnsurePages();
-            int index = Array.FindIndex(window._pageNames, name =>
-                string.Equals(name, pageName, StringComparison.OrdinalIgnoreCase));
-            if (index < 0) index = window._pages.FindIndex(page =>
-                string.Equals(page.Id, pageName, StringComparison.OrdinalIgnoreCase));
+            int index = window._pages.FindIndex(match);
             if (index >= 0)
-            {
                 window.SelectPage(index);
-            }
             window.Show();
             window.Focus();
             window.Repaint();
@@ -62,7 +60,7 @@ namespace Bento
             get
             {
                 EnsurePages();
-                return _pageNames[Mathf.Clamp(_mainTab, 0, _pageNames.Length - 1)];
+                return _pages.Count == 0 ? string.Empty : _pages[Mathf.Clamp(_mainTab, 0, _pages.Count - 1)].Name;
             }
         }
 
@@ -82,6 +80,11 @@ namespace Bento
         void OnGUI()
         {
             EnsurePages();
+            if (_pages.Count == 0)
+            {
+                EditorGUILayout.HelpBox("没有找到任何已注册的工具页面。", MessageType.Warning);
+                return;
+            }
             EnsureFolderSidebar();
             bool compact = position.width < CompactWidth;
             if (compact)
@@ -168,7 +171,7 @@ namespace Bento
                     SelectFirstPageInGroup(_groupNames[_groupTab]);
                 }
 
-                IBentoPage[] groupPages = GetPagesForGroup(_groupNames[_groupTab]).ToArray();
+                RegisteredToolPage[] groupPages = GetPagesForGroup(_groupNames[_groupTab]).ToArray();
                 if (groupPages.Length == 0)
                 {
                     EditorGUILayout.LabelField("暂无收藏", EditorStyles.miniLabel);
@@ -191,13 +194,16 @@ namespace Bento
         void BuildPages()
         {
             NotifyLifecycle(_activePage, lifecycle => lifecycle.OnDeactivated(), "重建前停用");
-            var catalog = new BentoCatalog();
-            _pages = catalog.Pages.ToList();
-            _pageNames = _pages.Select(page => page.Name).ToArray();
+            _pages = BentoCatalog.BuildPages();
             RefreshFavorites();
             _groupNames = new[] { FavoritesGroup }
                 .Concat(_pages.Select(page => page.Group).Distinct())
                 .ToArray();
+            if (_pages.Count == 0)
+            {
+                _activePage = null;
+                return;
+            }
             _mainTab = Mathf.Clamp(_mainTab, 0, _pages.Count - 1);
             _activePage = _pages[_mainTab];
             _groupTab = Math.Max(0, Array.IndexOf(_groupNames, _activePage.Group));
@@ -232,14 +238,14 @@ namespace Bento
                     }
                     if (_groupTab != groupIndex) continue;
 
-                    IBentoPage[] groupPages = GetPagesForGroup(group).ToArray();
+                    RegisteredToolPage[] groupPages = GetPagesForGroup(group).ToArray();
                     if (groupPages.Length == 0)
                     {
                         EditorGUILayout.HelpBox(
                             "还没有常用功能。进入任意页面后点击右上角的 ☆ 即可收藏。",
                             MessageType.None);
                     }
-                    foreach (IBentoPage page in groupPages)
+                    foreach (RegisteredToolPage page in groupPages)
                     {
                         using (new EditorGUILayout.HorizontalScope())
                         {
@@ -305,7 +311,7 @@ namespace Bento
             NotifyLifecycle(_activePage, lifecycle => lifecycle.OnActivated(), "激活");
         }
 
-        IEnumerable<IBentoPage> GetPagesForGroup(string group)
+        IEnumerable<RegisteredToolPage> GetPagesForGroup(string group)
         {
             return string.Equals(group, FavoritesGroup, StringComparison.Ordinal)
                 ? _favoritePages
@@ -314,7 +320,7 @@ namespace Bento
 
         void SelectFirstPageInGroup(string group)
         {
-            IBentoPage page = GetPagesForGroup(group).FirstOrDefault();
+            RegisteredToolPage page = GetPagesForGroup(group).FirstOrDefault();
             if (page == null)
             {
                 _groupTab = Array.IndexOf(_groupNames, group);
@@ -327,7 +333,7 @@ namespace Bento
                 _groupTab = Array.IndexOf(_groupNames, FavoritesGroup);
         }
 
-        void DrawFavoriteButton(IBentoPage page, params GUILayoutOption[] options)
+        void DrawFavoriteButton(RegisteredToolPage page, params GUILayoutOption[] options)
         {
             if (page == null) return;
             bool favorite = BentoFavorites.Contains(page.Id);
@@ -348,7 +354,7 @@ namespace Bento
             _favoritePages = BentoFavorites.Resolve(_pages);
         }
 
-        static void NotifyLifecycle(IBentoPage page, Action<IBentoPageLifecycle> action, string phase)
+        static void NotifyLifecycle(RegisteredToolPage page, Action<IBentoPageLifecycle> action, string phase)
         {
             if (!(page is IBentoPageLifecycle lifecycle)) return;
             try

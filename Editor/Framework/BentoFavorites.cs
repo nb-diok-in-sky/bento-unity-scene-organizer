@@ -27,7 +27,7 @@ namespace Bento
             Save();
         }
 
-        public static IReadOnlyList<IBentoPage> Resolve(IEnumerable<IBentoPage> pages)
+        public static IReadOnlyList<TPage> Resolve<TPage>(IEnumerable<TPage> pages) where TPage : IBentoPage
         {
             EnsureLoaded();
             return pages.Where(page => _ids.Contains(page.Id)).ToList();

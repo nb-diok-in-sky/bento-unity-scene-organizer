@@ -1,55 +1,57 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using UnityEditor;
+using UnityEngine;
 
 namespace Bento
 {
-    sealed class BentoCatalog
+    /// <summary>Collects every class marked with <see cref="BentoPageAttribute"/> across loaded assemblies.</summary>
+    static class BentoCatalog
     {
-        public BentoCatalog()
+        public static List<RegisteredToolPage> BuildPages()
         {
-
-            Pages = new List<IBentoPage>
+            var pages = new List<RegisteredToolPage>();
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (Type type in TypeCache.GetTypesWithAttribute<BentoPageAttribute>())
             {
-                Page("整理", "folder_favorites", "文件夹收藏", new ProjectFolderFavoritesTool(), tool => tool.Draw()),
-                Page("整理", "batch_rename", "批量重命名", new BatchRenameTool(), tool => tool.Draw()),
-                Page("整理", "asset_move", "资产移动", new SafeAssetMoveTool(), tool => tool.Draw()),
-                Page("整理", "asset_operation_history", "操作历史", new AssetOperationHistoryTool(), tool => tool.Draw()),
-                Page("整理", "asset_info", "资产信息", new AssetInfoExportTool(), tool => tool.Draw()),
-                Page("整理", "suffix_cleanup", "按后缀清理", new AssetSuffixCleanupTool(), tool => tool.Draw()),
-                Page("整理", "recursive_extract", "递归抽取资产", new RecursiveAssetExtractionTool(), tool => tool.Draw()),
-                Page("整理", "hierarchy_organization", "Hierarchy 整理", new HierarchyOrganizationTool(), tool => tool.Draw()),
-                Page("整理", "scene_light_batch", "场景光源批处理", new SceneLightBatchTool(), tool => tool.Draw()),
-                Page("整理", "scene_renderer_shadow", "场景物体阴影", new SceneRendererShadowBatchTool(), tool => tool.Draw()),
+                var info = (BentoPageAttribute)Attribute.GetCustomAttribute(type, typeof(BentoPageAttribute));
+                string problem = Validate(type, info);
+                if (problem == null && !ids.Add(info.Id))
+                    problem = $"页面 id“{info.Id}”重复";
+                if (problem != null)
+                {
+                    Debug.LogError($"[Bento] 跳过页面 {type.FullName}：{problem}");
+                    continue;
+                }
+                pages.Add(new RegisteredToolPage(type, info));
+            }
 
-                Page("资源、模型和预制体", "model_import_workflow", "模型导入", new ModelImportWorkflowTool(), tool => tool.Draw()),
-                Page("资源、模型和预制体", "resource_variant", "资源变体", new ResourceVariantTool(), tool => tool.Draw()),
-                Page("资源、模型和预制体", "fbx_material_inherit", "FBX 材质继承", new ModelMaterialInheritanceTool(), tool => tool.Draw()),
-                Page("资源、模型和预制体", "prefab_layer", "Prefab Layer", new PrefabLayerTool(), tool => tool.Draw()),
-                Page("资源、模型和预制体", "tag_layer", "Tag/Layer", new TagLayerTab(), tool => tool.Draw()),
-
-                Page("材质", "shader_replace", "Shader 替换", new ShaderReplaceTab(), tool => tool.Draw()),
-                Page("材质", "select_used_assets", "选中模型材质贴图", new SelectUsedAssetsTool(), tool => tool.Draw()),
-                Page("材质", "select_terrain_paint_textures", "选中 Terrain 绘制贴图", new SelectTerrainPaintTexturesTool(), tool => tool.Draw()),
-                Page("材质", "terrain_layer_generation", "Terrain Layer 生成", new TerrainLayerGenerationTool(), tool => tool.Draw()),
-
-                Page("场景", "scene_material_replace", "场景材质替换", new SceneMaterialReplacementTool(), tool => tool.Draw()),
-                Page("场景", "scene_material_usage", "查找材质使用对象", new SceneMaterialUsageTool(), tool => tool.Draw()),
-                Page("场景", "scene_material_picker", "场景材质吸管", new SceneMaterialPickerTool(), tool => tool.Draw()),
-                Page("场景", "prefab_replace", "预制体替换", new PrefabReplacer(), tool => tool.Draw()),
-                Page("场景", "scene_model_instance_audit", "FBX 实例检查", new SceneModelInstanceAuditTool(), tool => tool.Draw()),
-
-            };
-            OptionalToolPageRegistry.AppendAvailable((ICollection<IBentoPage>)Pages);
+            return pages
+                .OrderBy(page => GroupRank(page.Group))
+                .ThenBy(page => page.Group, StringComparer.Ordinal)
+                .ThenBy(page => page.Order)
+                .ThenBy(page => page.Name, StringComparer.Ordinal)
+                .ToList();
         }
 
-        public IReadOnlyList<IBentoPage> Pages { get; }
-
-        static IBentoPage Page<T>(string group, string id, string name, T owner, Action<T> draw)
-            where T : class
+        static string Validate(Type type, BentoPageAttribute info)
         {
-            if (owner == null) throw new ArgumentNullException(nameof(owner));
-            if (draw == null) throw new ArgumentNullException(nameof(draw));
-            return new BentoPage(group, id, name, () => draw(owner), owner);
+            if (type.IsAbstract) return "类型是抽象类";
+            if (!typeof(IBentoTool).IsAssignableFrom(type)) return $"没有实现 {nameof(IBentoTool)}";
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            if (type.GetConstructor(flags, null, Type.EmptyTypes, null) == null) return "缺少无参构造函数";
+            if (string.IsNullOrWhiteSpace(info.Id) || string.IsNullOrWhiteSpace(info.Group) ||
+                string.IsNullOrWhiteSpace(info.Name))
+                return "id、分组或名称为空";
+            return null;
+        }
+
+        static int GroupRank(string group)
+        {
+            int index = Array.IndexOf(BentoGroups.DisplayOrder, group);
+            return index < 0 ? int.MaxValue : index;
         }
     }
 }

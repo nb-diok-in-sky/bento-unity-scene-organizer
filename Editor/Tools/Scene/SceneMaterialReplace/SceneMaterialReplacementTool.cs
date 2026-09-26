@@ -3,7 +3,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class SceneMaterialReplacementTool : IBentoPageLifecycle
+    [BentoPage("scene_material_replace", BentoGroups.Scene, "场景材质替换", Order = 10)]
+    sealed class SceneMaterialReplacementTool : IBentoPageLifecycle, IBentoTool
     {
         Material _replacement;
         Material _sourceMaterial;

@@ -6,7 +6,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class ModelImportWorkflowTool
+    [BentoPage("model_import_workflow", BentoGroups.Models, "模型导入", Order = 10)]
+    sealed class ModelImportWorkflowTool : IBentoTool
     {
         readonly List<ModelImportWorkflowSource> _sources = new() { new ModelImportWorkflowSource() };
         readonly PackedMaskLayout _maskLayout = new();

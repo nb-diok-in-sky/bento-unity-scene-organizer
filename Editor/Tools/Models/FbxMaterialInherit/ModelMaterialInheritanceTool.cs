@@ -17,7 +17,8 @@ namespace Bento
         public bool include;
     }
 
-    sealed class ModelMaterialInheritanceTool : IBentoPageLifecycle
+    [BentoPage("fbx_material_inherit", BentoGroups.Models, "FBX 材质继承", Order = 30)]
+    sealed class ModelMaterialInheritanceTool : IBentoPageLifecycle, IBentoTool
     {
         GameObject _source;
         GameObject _target;

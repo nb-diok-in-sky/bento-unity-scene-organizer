@@ -4,7 +4,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class BatchRenameTool
+    [BentoPage("batch_rename", BentoGroups.Organize, "批量重命名", Order = 20)]
+    sealed class BatchRenameTool : IBentoTool
     {
         readonly HierarchyRenameTool _hierarchyTool = new HierarchyRenameTool();
         readonly ProjectAssetRenameTool _projectTool = new ProjectAssetRenameTool();

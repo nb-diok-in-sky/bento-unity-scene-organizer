@@ -3,7 +3,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class SceneMaterialPickerTool : IBentoPageLifecycle
+    [BentoPage("scene_material_picker", BentoGroups.Scene, "场景材质吸管", Order = 30)]
+    sealed class SceneMaterialPickerTool : IBentoPageLifecycle, IBentoTool
     {
         readonly SceneMaterialPickerController _controller = new SceneMaterialPickerController();
 

@@ -8,7 +8,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    class McpIntegrationTool : IBentoPageLifecycle
+    [BentoPage("ai_mcp", BentoGroups.Settings, "AI/MCP", Order = 10)]
+    class McpIntegrationTool : IBentoPageLifecycle, IBentoTool
     {
         static readonly string[] DangerousTools = { "execute_code", "manage_asset", "manage_script", "execute_menu_item" };
         static readonly string[] ReadOnlyTools = { "find_gameobjects", "read_console" };

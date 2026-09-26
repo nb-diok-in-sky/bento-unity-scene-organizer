@@ -5,7 +5,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class SelectUsedAssetsTool : IBentoPageLifecycle
+    [BentoPage("select_used_assets", BentoGroups.Materials, "选中模型材质贴图", Order = 20)]
+    sealed class SelectUsedAssetsTool : IBentoPageLifecycle, IBentoTool
     {
         readonly List<GameObject> _lockedRoots = new List<GameObject>();
         readonly List<UnityEngine.Object> _models = new List<UnityEngine.Object>();

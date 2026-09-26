@@ -5,7 +5,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class SceneModelInstanceAuditTool
+    [BentoPage("scene_model_instance_audit", BentoGroups.Scene, "FBX 实例检查", Order = 50)]
+    sealed class SceneModelInstanceAuditTool : IBentoTool
     {
         SceneModelInstanceAuditScope _scope = SceneModelInstanceAuditScope.LoadedScenes;
         Vector2 _scroll;

@@ -20,27 +20,33 @@ namespace Bento
         void OnSelectionChanged();
     }
 
-    public sealed class BentoPage : IBentoPage, IBentoPageLifecycle
+    /// <summary>A registered page whose tool instance is created on first use.</summary>
+    sealed class RegisteredToolPage : IBentoPage, IBentoPageLifecycle
     {
-        readonly Action _draw;
-        readonly IBentoPageLifecycle _lifecycle;
+        IBentoTool _tool;
 
-        public BentoPage(string group, string id, string name, Action draw, object owner = null)
+        public RegisteredToolPage(Type toolType, BentoPageAttribute info)
         {
-            Group = group;
-            Id = id;
-            Name = name;
-            _draw = draw ?? throw new ArgumentNullException(nameof(draw));
-            _lifecycle = owner as IBentoPageLifecycle;
+            ToolType = toolType ?? throw new ArgumentNullException(nameof(toolType));
+            if (info == null) throw new ArgumentNullException(nameof(info));
+            Id = info.Id;
+            Group = info.Group;
+            Name = info.Name;
+            Order = info.Order;
         }
 
+        public Type ToolType { get; }
         public string Name { get; }
         public string Group { get; }
         public string Id { get; }
-        public void Draw() => _draw();
-        public void OnActivated() => _lifecycle?.OnActivated();
-        public void OnDeactivated() => _lifecycle?.OnDeactivated();
-        public void OnSelectionChanged() => _lifecycle?.OnSelectionChanged();
+        public int Order { get; }
+
+        IBentoTool Tool => _tool ?? (_tool = (IBentoTool)Activator.CreateInstance(ToolType, nonPublic: true));
+
+        public void Draw() => Tool.Draw();
+        public void OnActivated() => (Tool as IBentoPageLifecycle)?.OnActivated();
+        public void OnDeactivated() => (_tool as IBentoPageLifecycle)?.OnDeactivated();
+        public void OnSelectionChanged() => (_tool as IBentoPageLifecycle)?.OnSelectionChanged();
     }
 
     sealed class SelectionPlanCache<TPlan>

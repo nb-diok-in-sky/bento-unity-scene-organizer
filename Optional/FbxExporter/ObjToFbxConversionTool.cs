@@ -3,7 +3,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class ObjToFbxConversionTool
+    [BentoPage("obj_to_fbx", BentoGroups.Models, "OBJ 转项目 FBX", Order = 60)]
+    sealed class ObjToFbxConversionTool : IBentoTool
     {
         GameObject _obj;
         DefaultAsset _mtl;

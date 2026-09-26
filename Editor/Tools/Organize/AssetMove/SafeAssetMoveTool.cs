@@ -6,7 +6,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    class SafeAssetMoveTool
+    [BentoPage("asset_move", BentoGroups.Organize, "资产移动", Order = 30)]
+    class SafeAssetMoveTool : IBentoTool
     {
         readonly AssetNamingOptions _naming = new AssetNamingOptions();
         readonly AssetSelectionList _sources = new AssetSelectionList(IsSupportedSourceAsset);

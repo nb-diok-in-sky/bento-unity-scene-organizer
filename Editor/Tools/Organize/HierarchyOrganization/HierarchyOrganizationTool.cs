@@ -6,7 +6,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class HierarchyOrganizationTool : IBentoPageLifecycle
+    [BentoPage("hierarchy_organization", BentoGroups.Organize, "Hierarchy 整理", Order = 80)]
+    sealed class HierarchyOrganizationTool : IBentoPageLifecycle, IBentoTool
     {
         readonly List<HierarchyOrganizationEntry> _entries = new List<HierarchyOrganizationEntry>();
         readonly List<HierarchyOrganizationEntry> _quickEntries = new List<HierarchyOrganizationEntry>();

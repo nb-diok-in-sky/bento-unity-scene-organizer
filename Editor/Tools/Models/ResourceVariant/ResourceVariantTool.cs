@@ -6,7 +6,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    class ResourceVariantTool : IBentoPageLifecycle
+    [BentoPage("resource_variant", BentoGroups.Models, "资源变体", Order = 20)]
+    class ResourceVariantTool : IBentoPageLifecycle, IBentoTool
     {
         readonly ResourceVariantSession _session = new ResourceVariantSession();
         readonly ResourceVariantSettingsGUI _settingsGUI;

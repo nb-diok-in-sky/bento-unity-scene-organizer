@@ -6,7 +6,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    class PrefabLayerTool
+    [BentoPage("prefab_layer", BentoGroups.Models, "Prefab Layer", Order = 40)]
+    class PrefabLayerTool : IBentoTool
     {
         List<PrefabLayerPlanEntry> _plan = new List<PrefabLayerPlanEntry>();
         PrefabLayerHistory _history;

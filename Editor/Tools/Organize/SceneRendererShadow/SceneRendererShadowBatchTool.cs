@@ -4,7 +4,8 @@ using UnityEngine.Rendering;
 
 namespace Bento
 {
-    sealed class SceneRendererShadowBatchTool : IBentoPageLifecycle
+    [BentoPage("scene_renderer_shadow", BentoGroups.Organize, "场景物体阴影", Order = 100)]
+    sealed class SceneRendererShadowBatchTool : IBentoPageLifecycle, IBentoTool
     {
         int _castingOption;
         RendererShadowReceiveOption _receiveOption;

@@ -19,7 +19,8 @@ namespace Bento
         public List<ProjectFolderFavorite> items = new List<ProjectFolderFavorite>();
     }
 
-    class ProjectFolderFavoritesTool
+    [BentoPage("folder_favorites", BentoGroups.Organize, "文件夹收藏", Order = 10)]
+    class ProjectFolderFavoritesTool : IBentoTool
     {
         readonly ProjectFolderFavoriteList _data;
         readonly ProjectFolderFavoriteStore _store = new ProjectFolderFavoriteStore();

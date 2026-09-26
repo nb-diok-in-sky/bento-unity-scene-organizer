@@ -8,7 +8,8 @@ namespace Bento
 {
     enum AssetExtractionType { Prefab, Material, Texture, FBX, CustomSuffix }
 
-    sealed class RecursiveAssetExtractionTool
+    [BentoPage("recursive_extract", BentoGroups.Organize, "递归抽取资产", Order = 70)]
+    sealed class RecursiveAssetExtractionTool : IBentoTool
     {
         DefaultAsset _sourceFolder;
         DefaultAsset _targetFolder;

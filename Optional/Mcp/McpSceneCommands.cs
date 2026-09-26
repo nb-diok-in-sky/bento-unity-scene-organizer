@@ -44,7 +44,7 @@ namespace Bento
                 include = item?["include"]?.Value<bool?>() ?? true
             })).ToList();
             HierarchyOrganizationSession.SetDraft(entries);
-            BentoWindow window = BentoWindow.OpenPage("hierarchy_organization");
+            BentoWindow window = BentoWindow.OpenPage<HierarchyOrganizationTool>();
             return new SuccessResponse("Hierarchy draft prepared for human review. No scene changes were made.", new
             {
                 page = window.CurrentPageName,

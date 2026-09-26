@@ -6,7 +6,8 @@ using UnityEngine;
 
 namespace Bento
 {
-    sealed class SelectTerrainPaintTexturesTool
+    [BentoPage("select_terrain_paint_textures", BentoGroups.Materials, "选中 Terrain 绘制贴图", Order = 30)]
+    sealed class SelectTerrainPaintTexturesTool : IBentoTool
     {
         static readonly BindingFlags InstanceFields =
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
