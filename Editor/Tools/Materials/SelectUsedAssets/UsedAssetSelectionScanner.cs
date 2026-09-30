@@ -101,8 +101,7 @@ namespace Bento
             {
                 Texture texture = reference.Texture;
                 string path = AssetDatabase.GetAssetPath(texture);
-                bool included = UsedAssetSelectionFilter.IsModelTextureProperty(reference.PropertyName) &&
-                                UsedAssetSelectionFilter.IsProjectTexture(texture);
+                bool included = UsedAssetSelectionFilter.IsProjectTexture(texture);
                 result.textureTraces.Add(new TextureScanTrace
                 {
                     renderer = renderer != null ? renderer.name : "<null>",

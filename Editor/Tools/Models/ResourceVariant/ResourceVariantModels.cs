@@ -20,7 +20,6 @@ namespace Bento
     enum VariantTextureDisposition
     {
         CopyCandidate,
-        SharedShaderSupport,
         RuntimeInternal
     }
 

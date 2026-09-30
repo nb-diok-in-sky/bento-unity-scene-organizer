@@ -47,16 +47,5 @@ namespace Bento
                    mainType != typeof(TerrainLayer) &&
                    typeof(Texture).IsAssignableFrom(mainType);
         }
-
-        public static bool IsModelTextureProperty(string propertyName)
-        {
-            if (string.IsNullOrEmpty(propertyName)) return false;
-            switch (propertyName)
-            {
-                    return false;
-                default:
-                    return true;
-            }
-        }
     }
 }

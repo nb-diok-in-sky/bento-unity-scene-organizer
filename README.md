@@ -72,7 +72,7 @@ https://github.com/nb-diok-in-sky/Bento.git
 | **模型导入** | 选择一个或多个外部模型文件夹，一次跑完整条流程：递归扫描 FBX 和贴图 → 按贴图命名识别 BaseColor / Normal / Mask 等类型 → 创建 URP/Lit 材质并绑定到模型材质槽 → 生成 Prefab。每个 FBX 的计划都可以预览、单独取消。 | 新建材质和 Prefab，修改 FBX 的材质映射 |
 | **资源变体** | 把场景里已经调好的对象另存为一个独立的新 Prefab，可以选择同时复制材质和贴图，新 Prefab 会引用这些复制出来的材质和贴图。适合做“换色版”“破损版”这类变体，原资产完全不动。 | 新建资产；支持一键撤销整次生成 |
 | **FBX 材质继承** | 两个结构相同的模型，一个材质是对的，另一个是错的。按子物体路径或同名 Renderer 匹配，把参考模型的材质复制到待修复的模型上。 | 修改待修复模型的材质引用 |
-| **Prefab Layer** | 为选中的 Prefab 里的每个节点规划 Layer，确认后写入。默认只修改 Default 层的节点，已有的特殊 Layer（例如 Water）保持不变。 | 修改 Prefab；可恢复上次修改 |
+| **Prefab Layer** | 按资产类型批量设置 Prefab 的 Layer。不预设任何 Layer 方案，只在你项目已有的 Layer 里挑：资产名包含 Layer 名，或两者属于同一类（例如 `pine_tree` → `Foliage`、`木屋` → `建筑`）；有大中小多个同类 Layer 时按占地尺寸选。匹配不上的保持原样，默认只改仍在 Default 层的节点。 | 修改 Prefab；可恢复上次修改 |
 | **Tag/Layer** | 批量设置场景对象的 Tag 或 Layer，可以选择是否包含子物体。 | Ctrl+Z |
 | **OBJ 转项目 FBX** | *可选模块。*把 OBJ 的导入结果重新导出为项目内的 FBX。需要安装 Unity FBX Exporter。 | 新建 FBX |
 

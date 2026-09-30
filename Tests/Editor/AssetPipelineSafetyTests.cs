@@ -408,7 +408,6 @@ namespace Bento.Tests
             finally { UnityEngine.Object.DestroyImmediate(sourceObject); }
         }
 
-
         static Texture2D CreateTexture(string name)
         {
             var texture = new Texture2D(2, 2) { name = name };

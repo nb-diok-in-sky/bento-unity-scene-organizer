@@ -9,13 +9,19 @@ namespace Bento
 {
     static class PrefabLayerPlanner
     {
-        public static List<PrefabLayerPlanEntry> Build(IEnumerable<UnityEngine.Object> selection)
+        public static List<PrefabLayerPlanEntry> Build(
+            IEnumerable<UnityEngine.Object> selection,
+            PrefabLayerMatchSettings settings = null)
         {
             var document = AssetInfoCollector.Collect(selection);
-            return document.assets.Select(BuildEntry).ToList();
+            var projectLayers = ProjectLayerCatalog.GetDefinedNames();
+            return document.assets.Select(asset => BuildEntry(asset, projectLayers, settings)).ToList();
         }
 
-        static PrefabLayerPlanEntry BuildEntry(AssetInfoRecord asset)
+        static PrefabLayerPlanEntry BuildEntry(
+            AssetInfoRecord asset,
+            IReadOnlyList<string> projectLayers,
+            PrefabLayerMatchSettings settings)
         {
             string assetPath = ToAssetPath(asset.path);
             var root = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
@@ -23,28 +29,24 @@ namespace Bento
                 .Select(node => ResolveNodeLayer(root, node.hierarchyPath))
                 .Where(layer => layer >= 0)
                 .ToList();
-            var suggestion = Suggest(asset);
+            string currentRootLayer = root != null ? LayerMask.LayerToName(root.layer) : string.Empty;
+            float footprint = Mathf.Max(asset.boundsSize.x, asset.boundsSize.z);
+            var suggestion = PrefabLayerMatcher.Suggest(asset.originalName, footprint, projectLayers, settings);
+            bool matched = suggestion.Layer != null;
             return new PrefabLayerPlanEntry
             {
                 assetPath = assetPath,
                 assetGuid = AssetDatabase.AssetPathToGUID(assetPath),
-                currentRootLayer = root != null ? LayerMask.LayerToName(root.layer) : string.Empty,
-                suggestedLayer = suggestion.layer,
-                reason = suggestion.reason,
-                confidence = suggestion.confidence,
-                include = ProjectLayerCatalog.IsDefined(suggestion.layer),
+                currentRootLayer = currentRootLayer,
+                suggestedLayer = matched ? suggestion.Layer : currentRootLayer,
+                reason = suggestion.Reason,
+                confidence = suggestion.Confidence,
+                include = matched && ProjectLayerCatalog.IsDefined(suggestion.Layer),
                 nodeCount = layers.Count,
                 defaultLayerNodeCount = layers.Count(layer => layer == 0),
                 specialLayerNodeCount = layers.Count(layer => layer != 0),
                 existingLayers = layers.Select(LayerMask.LayerToName).Where(name => !string.IsNullOrEmpty(name)).Distinct().ToList()
             };
-        }
-
-        static (string layer, string reason, float confidence) Suggest(AssetInfoRecord asset)
-        {
-            string semantic = (asset.originalName + " " + asset.inferredObject).ToLowerInvariant();
-            float maxHorizontal = Mathf.Max(asset.boundsSize.x, asset.boundsSize.z);
-            return PrefabLayerSemantics.Suggest(semantic, maxHorizontal);
         }
 
         static int ResolveNodeLayer(GameObject root, string hierarchyPath)

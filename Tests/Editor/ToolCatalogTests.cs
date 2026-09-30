@@ -14,6 +14,7 @@ namespace Bento.Tests
             "scene_renderer_shadow", "model_import_workflow", "resource_variant", "fbx_material_inherit",
             "prefab_layer", "tag_layer", "shader_replace", "select_used_assets", "select_terrain_paint_textures",
             "terrain_layer_generation", "scene_material_replace", "scene_material_usage", "scene_material_picker",
+            "prefab_replace", "scene_model_instance_audit", "lightmap_uv_bake"
         };
 
         [Test]

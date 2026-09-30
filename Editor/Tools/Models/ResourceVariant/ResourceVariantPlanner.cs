@@ -272,12 +272,7 @@ namespace Bento
                 if (texture == null) continue;
 
                 string texturePath = AssetDatabase.GetAssetPath(texture);
-                VariantTextureDisposition disposition =
-                    ResourceVariantTextureClassifier.GetDisposition(
-                        material.shader,
-                        propertyName,
-                        propertyDescription,
-                        texture);
+                VariantTextureDisposition disposition = ResourceVariantTextureClassifier.GetDisposition(texture);
                 VariantTextureKind kind = ResourceVariantTextureClassifier.Classify(
                     material.shader,
                     propertyIndex,
@@ -319,8 +314,6 @@ namespace Bento
             VariantTextureKind kind,
             VariantTextureDisposition disposition)
         {
-            if (disposition == VariantTextureDisposition.SharedShaderSupport)
-                return "Shader/Terrain 共享支持贴图";
             if (disposition == VariantTextureDisposition.RuntimeInternal)
                 return "运行时/内部贴图";
             if (!_settings.copyTextures) return "未勾选贴图复制";

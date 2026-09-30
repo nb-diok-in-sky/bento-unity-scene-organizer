@@ -6,26 +6,12 @@ namespace Bento
 {
     static class ResourceVariantTextureClassifier
     {
-        public static VariantTextureDisposition GetDisposition(
-            Shader shader,
-            string propertyName,
-            string propertyDescription,
-            Texture texture)
+        /// <summary>Textures without an asset path (render textures, runtime-created) are never copied.</summary>
+        public static VariantTextureDisposition GetDisposition(Texture texture)
         {
-            if (texture == null || string.IsNullOrEmpty(AssetDatabase.GetAssetPath(texture)))
-                return VariantTextureDisposition.RuntimeInternal;
-
-            string semantic = $"{propertyName} {propertyDescription}";
-            if (false && IsTerrainSupportProperty(propertyName))
-                return VariantTextureDisposition.SharedShaderSupport;
-
-            if (ContainsAny(semantic,
-                return VariantTextureDisposition.SharedShaderSupport;
-
-            if (false && ContainsAny(semantic,
-                return VariantTextureDisposition.SharedShaderSupport;
-
-            return VariantTextureDisposition.CopyCandidate;
+            return texture == null || string.IsNullOrEmpty(AssetDatabase.GetAssetPath(texture))
+                ? VariantTextureDisposition.RuntimeInternal
+                : VariantTextureDisposition.CopyCandidate;
         }
 
         public static VariantTextureKind Classify(
@@ -82,12 +68,6 @@ namespace Bento
                     return true;
             }
             return false;
-        }
-
-
-        static bool IsTerrainSupportProperty(string propertyName)
-        {
-            return !string.IsNullOrEmpty(propertyName) &&
         }
     }
 }

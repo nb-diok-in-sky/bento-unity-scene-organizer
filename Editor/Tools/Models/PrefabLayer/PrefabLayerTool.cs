@@ -14,12 +14,27 @@ namespace Bento
         PrefabLayerApplyMode _mode = PrefabLayerApplyMode.DefaultNodesOnly;
         Vector2 _scroll;
         string[] _layers;
+        List<string> _matchableLayers;
+        readonly PrefabLayerMatchSettings _settings = new PrefabLayerMatchSettings
+        {
+            smallMax = EditorPrefs.GetFloat(SmallMaxKey, 2f),
+            mediumMax = EditorPrefs.GetFloat(MediumMaxKey, 8f)
+        };
+
+        const string SmallMaxKey = "Bento.PrefabLayer.SmallMax";
+        const string MediumMaxKey = "Bento.PrefabLayer.MediumMax";
 
         public void Draw()
         {
             EnsureLayers();
             EditorGUILayout.LabelField("Prefab Layer 规划", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("AI/程序只负责建议，实际写入必须在这里确认。默认仅修改 Default 节点，已有的特殊 Layer 会保留。", MessageType.Info);
+            EditorGUILayout.HelpBox(
+                "根据资产名称，在本项目已定义的 Layer 中寻找最合适的一个：资产名直接包含 Layer 名，或两者属于同一类（例如 Foliage 与 pine_tree）。" +
+                "项目里有同一类的大中小多个 Layer（如 Rocks_S / Rocks_L）时，按资产占地尺寸选择。匹配不上的保持原样。" +
+                "工具只给建议，写入前必须在这里确认；默认只修改 Default 节点，已经设置过其他 Layer 的节点保持不变。",
+                MessageType.Info);
+            DrawMatchableLayers();
+            DrawSizeThresholds();
             _mode = (PrefabLayerApplyMode)EditorGUILayout.EnumPopup("子节点应用策略", _mode);
             if (GUILayout.Button("分析 Project 选择", GUILayout.Height(34))) Analyze();
             DrawPlan();
@@ -28,7 +43,10 @@ namespace Bento
 
         void Analyze()
         {
-            _plan = PrefabLayerPlanner.Build(ProjectSelection.CurrentAssets);
+            _layers = null;
+            _matchableLayers = null;
+            EnsureLayers();
+            _plan = PrefabLayerPlanner.Build(ProjectSelection.CurrentAssets, _settings);
             if (_plan.Count == 0) EditorUtility.DisplayDialog("没有 Prefab/FBX", "请在 Project 窗口选择 Prefab、FBX 或文件夹。", "确定");
         }
 
@@ -76,6 +94,36 @@ namespace Bento
                 _history = null;
         }
 
-        void EnsureLayers() => _layers = _layers ?? ProjectLayerCatalog.GetDefinedNames().ToArray();
+        void DrawMatchableLayers()
+        {
+            if (_matchableLayers.Count == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "项目还没有可用于分类的自定义 Layer。请先在 Project Settings > Tags and Layers 中添加，例如 Foliage、Rocks、Buildings。",
+                    MessageType.Warning);
+                return;
+            }
+            EditorGUILayout.LabelField($"参与匹配的项目 Layer：{string.Join("、", _matchableLayers)}", EditorStyles.wordWrappedMiniLabel);
+        }
+
+        void DrawSizeThresholds()
+        {
+            EditorGUI.BeginChangeCheck();
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.LabelField("尺寸分界（米）", GUILayout.Width(90));
+                _settings.smallMax = Mathf.Max(0f, EditorGUILayout.FloatField("小于此为小", _settings.smallMax));
+                _settings.mediumMax = Mathf.Max(_settings.smallMax, EditorGUILayout.FloatField("小于此为中", _settings.mediumMax));
+            }
+            if (!EditorGUI.EndChangeCheck()) return;
+            EditorPrefs.SetFloat(SmallMaxKey, _settings.smallMax);
+            EditorPrefs.SetFloat(MediumMaxKey, _settings.mediumMax);
+        }
+
+        void EnsureLayers()
+        {
+            _layers = _layers ?? ProjectLayerCatalog.GetDefinedNames().ToArray();
+            _matchableLayers = _matchableLayers ?? PrefabLayerMatcher.ContentLayers(_layers);
+        }
     }
 }
