@@ -100,7 +100,8 @@ namespace Bento
                 if (GUILayout.Button("导出移动前完整清单"))
                 {
                     string path = AssetMoveManifestService.ExportPlan(_plan);
-                    EditorUtility.DisplayDialog("清单已导出", $"移动前预览已保存：\n{path}", "确定");
+                    if (path != null)
+                        EditorUtility.DisplayDialog("清单已导出", $"移动前预览已保存：\n{path}", "确定");
                 }
             }
             using (new EditorGUI.DisabledScope(!canMove))

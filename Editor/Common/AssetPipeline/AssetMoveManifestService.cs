@@ -10,8 +10,12 @@ namespace Bento
 {
     static class AssetMoveManifestService
     {
-        const string OutputFolder = "Bento_移动清单";
+        const string LastFolderKey = "Bento.AssetMoveManifest.LastFolder";
 
+        /// <summary>
+        /// Asks where to save the manifest of the included entries and writes a JSON file plus a readable
+        /// .txt next to it. Returns the JSON path, or null when the user cancels.
+        /// </summary>
         public static string ExportPlan(IReadOnlyList<AssetMoveEntry> entries)
         {
             var moves = entries.Where(entry => entry.include).Select(entry => new AssetMoveHistoryEntry
@@ -26,22 +30,30 @@ namespace Bento
         static string Export(string label, IEnumerable<AssetMoveHistoryEntry> sourceMoves)
         {
             string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
-            string outputRoot = Path.Combine(projectRoot, OutputFolder);
-            Directory.CreateDirectory(outputRoot);
-            string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string lastFolder = EditorPrefs.GetString(LastFolderKey, string.Empty);
+            string initialFolder = Directory.Exists(lastFolder) ? lastFolder : projectRoot;
+            string defaultName = $"{DateTime.Now:yyyyMMdd_HHmmss}_{label}";
+            string jsonPath = EditorUtility.SaveFilePanel("保存资产移动清单", initialFolder, defaultName, "json");
+            if (string.IsNullOrEmpty(jsonPath)) return null;
+
+            EditorPrefs.SetString(LastFolderKey, Path.GetDirectoryName(jsonPath));
             var manifest = new AssetMoveManifest
             {
                 createdAtUtc = DateTime.UtcNow.ToString("O"),
                 projectRoot = projectRoot,
                 moves = sourceMoves.Select(Clone).ToList()
             };
-            string baseName = $"{stamp}_{label}";
-            string jsonPath = Path.Combine(outputRoot, baseName + ".json");
             File.WriteAllText(jsonPath, JsonUtility.ToJson(manifest, true), new UTF8Encoding(true));
-            File.WriteAllText(Path.Combine(outputRoot, baseName + ".txt"), BuildReadableList(manifest), new UTF8Encoding(true));
-            AssetDatabase.Refresh();
+            File.WriteAllText(Path.ChangeExtension(jsonPath, ".txt"), BuildReadableList(manifest), new UTF8Encoding(true));
+            if (IsInsideAssets(jsonPath)) AssetDatabase.Refresh();
             EditorUtility.RevealInFinder(jsonPath);
             return jsonPath;
+        }
+
+        static bool IsInsideAssets(string path)
+        {
+            string assets = Path.GetFullPath(Application.dataPath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            return Path.GetFullPath(path).StartsWith(assets, StringComparison.OrdinalIgnoreCase);
         }
 
         static AssetMoveHistoryEntry Clone(AssetMoveHistoryEntry move) => new AssetMoveHistoryEntry
