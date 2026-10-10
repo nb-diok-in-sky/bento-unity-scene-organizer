@@ -25,6 +25,13 @@ namespace Bento.Tests
         }
 
         [Test]
+        public void DefaultFavoritesPointToRegisteredPages()
+        {
+            var ids = BentoCatalog.BuildPages().Select(page => page.Id).ToList();
+            CollectionAssert.IsSubsetOf(BentoFavorites.DefaultIds, ids);
+        }
+
+        [Test]
         public void PageIdsAreUnique()
         {
             var ids = BentoCatalog.BuildPages().Select(page => page.Id).ToList();

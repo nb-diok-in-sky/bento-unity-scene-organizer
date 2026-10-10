@@ -213,7 +213,9 @@ namespace Bento
             }
             _mainTab = Mathf.Clamp(_mainTab, 0, _pages.Count - 1);
             _activePage = _pages[_mainTab];
-            _groupTab = Math.Max(0, Array.IndexOf(_groupNames, _activePage.Group));
+            _groupTab = _favoritePages.Contains(_activePage)
+                ? Array.IndexOf(_groupNames, FavoritesGroup)
+                : Math.Max(0, Array.IndexOf(_groupNames, _activePage.Group));
             NotifyLifecycle(_activePage, lifecycle => lifecycle.OnActivated(), "激活");
         }
 
