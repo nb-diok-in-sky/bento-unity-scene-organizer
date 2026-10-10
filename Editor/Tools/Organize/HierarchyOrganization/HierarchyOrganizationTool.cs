@@ -235,6 +235,7 @@ namespace Bento
                         .ToArray();
             }
 
+            DrawParentCleanupAction();
             DrawCompensationActions(risks);
 
             int displayCount = Mathf.Min(risks.Count, 20);
@@ -251,6 +252,33 @@ namespace Bento
 
             if (risks.Count > displayCount)
                 EditorGUILayout.LabelField($"仅显示前 {displayCount} 个；可点击“选中全部风险对象”统一检查。", EditorStyles.miniLabel);
+        }
+
+        void DrawParentCleanupAction()
+        {
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("推荐：整理父物体", EditorStyles.boldLabel);
+            string blocker = HierarchyParentCleanupService.GetBlocker(_targetParent);
+            if (blocker != null)
+            {
+                EditorGUILayout.HelpBox(blocker, MessageType.None);
+                return;
+            }
+
+            EditorGUILayout.HelpBox(
+                "形变通常是因为目标父物体带有旋转和非等比缩放。它下面还没有子物体，可以把它整理干净：位置不变，旋转归零，缩放改为 1。整理后再归入一般就不会形变。",
+                MessageType.Info);
+            if (GUILayout.Button($"整理父物体“{_targetParent.name}”", GUILayout.Height(34)) && BentoCommand.Confirm(
+                    "整理父物体",
+                    $"将把“{_targetParent.name}”的旋转归零、缩放改为 1，世界位置保持不变。\n它下面没有子物体，不会影响其他对象。支持 Ctrl+Z。",
+                    "整理"))
+            {
+                BentoCommand.Run("整理父物体失败", () =>
+                {
+                    HierarchyParentCleanupService.Clean(_targetParent);
+                    _quickPlanDirty = true;
+                });
+            }
         }
 
         void DrawCompensationActions(IReadOnlyList<HierarchyOrganizationEntry> risks)
