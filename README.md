@@ -1,4 +1,4 @@
-# Bento
+# Bento — Unity Scene Organizer
 
 **分格装好的 Unity 编辑器工具箱。** 给美术、地编和技术美术用：整理资产、批量改名、搬运文件、处理材质、布置场景，这些零碎又容易出错的活，一个窗口里都能做完。
 
@@ -27,15 +27,15 @@ Bento 里所有会改东西的操作，都遵循同一个流程：
 在 Unity 中打开 `Window > Package Manager`，点左上角 `+`，选择 **Add package from git URL**，填入：
 
 ```text
-https://github.com/nb-diok-in-sky/Bento.git
+https://github.com/nb-diok-in-sky/bento-unity-scene-organizer.git
 ```
 
-需要固定版本时，在 URL 末尾加上 tag，例如 `...Bento.git#v1.0.0`。
+发布版本 tag 后，可在 URL 末尾加上对应的 tag 来固定版本。
 
 也可以直接编辑项目的 `Packages/manifest.json`：
 
 ```json
-"com.nbdiok.bento": "https://github.com/nb-diok-in-sky/Bento.git"
+"com.nbdiok.bento": "https://github.com/nb-diok-in-sky/bento-unity-scene-organizer.git"
 ```
 
 ## 快速上手

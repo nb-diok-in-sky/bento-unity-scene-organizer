@@ -1,7 +1,7 @@
 {
   "name": "com.nbdiok.bento",
   "version": "1.0.0",
-  "displayName": "Bento",
+  "displayName": "Bento - Unity Scene Organizer",
   "description": "Unity Editor toolbox for art asset organization and scene editing: safe asset move/rename with rollback, batch rename, model import, resource variants, material and scene batch tools.",
   "unity": "2022.3",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "name": "nb-diok-in-sky",
     "url": "https://github.com/nb-diok-in-sky"
   },
-  "documentationUrl": "https://github.com/nb-diok-in-sky/Bento/blob/main/Documentation~/使用说明.md",
-  "changelogUrl": "https://github.com/nb-diok-in-sky/Bento/blob/main/CHANGELOG.md",
-  "licensesUrl": "https://github.com/nb-diok-in-sky/Bento/blob/main/LICENSE"
+  "documentationUrl": "https://github.com/nb-diok-in-sky/bento-unity-scene-organizer/blob/main/Documentation~/使用说明.md",
+  "changelogUrl": "https://github.com/nb-diok-in-sky/bento-unity-scene-organizer/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/nb-diok-in-sky/bento-unity-scene-organizer/blob/main/LICENSE"
 }
