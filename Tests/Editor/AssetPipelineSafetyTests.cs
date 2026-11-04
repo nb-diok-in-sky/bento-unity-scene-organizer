@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Bento.Tests
 {
@@ -107,6 +108,50 @@ namespace Bento.Tests
             Require(failed, "中途失败测试没有触发异常");
             Require(AssetDatabase.AssetPathToGUID(firstPath) == firstGuid, "中途失败后第一个资源未回滚");
             Require(completed.Count == 0, "成功回滚后仍保留了误导性移动历史");
+        }
+
+        [Test]
+        public void MoveThatReportsFailureAfterMovingIsRolledBack()
+        {
+            var texture = CreateTexture("MovedBeforeFailure");
+            string sourcePath = Source + "/MovedBeforeFailure.asset";
+            string targetPath = Target + "/MovedBeforeFailure.asset";
+            var completed = new List<AssetMoveHistoryEntry>();
+            Assert.Throws<InvalidOperationException>(() =>
+                new AssetPathTransaction(new MoveThenFail()).Execute(
+                    new[] { ToOperation(CreateEntry(texture, sourcePath, targetPath)) }, completed, "测试回滚失败"));
+            Assert.IsFalse(string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(sourcePath)));
+            Assert.IsTrue(string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(targetPath)));
+            Assert.AreEqual(0, completed.Count);
+        }
+
+        [Test]
+        public void BatchTextureMatchingUsesModelName()
+        {
+            string[] paths = { "Assets/Rock_BaseColor.png", "Assets/Tree_BaseColor.png" };
+            Assert.AreEqual(paths[1], FbxUrpMaterialBindingService.FindTexturePath(paths, "Tree", "_BaseColor"));
+            Assert.IsNull(FbxUrpMaterialBindingService.FindTexturePath(paths, "House", "_BaseColor"));
+        }
+
+        [Test]
+        public void VariantCleanupDoesNotDeleteReplacementAtSamePath()
+        {
+            string path = Source + "/Variant.asset";
+            AssetDatabase.CreateAsset(new Texture2D(2, 2), path);
+            string originalGuid = AssetDatabase.AssetPathToGUID(path);
+            var result = new ResourceVariantGenerationResult();
+            result.createdAssets.Add(path);
+            result.createdTextures.Add(path);
+            result.createdAssetGuids[path] = originalGuid;
+            Assert.IsTrue(AssetDatabase.DeleteAsset(path));
+            string replacementPath = Target + "/Replacement.asset";
+            AssetDatabase.CreateAsset(new Texture2D(2, 2), replacementPath);
+            string replacementGuid = AssetDatabase.AssetPathToGUID(replacementPath);
+            Assert.IsTrue(string.IsNullOrEmpty(AssetDatabase.MoveAsset(replacementPath, path)));
+            Assert.AreNotEqual(originalGuid, replacementGuid);
+            var cleanup = new ResourceVariantCleanupService().Delete(result);
+            CollectionAssert.Contains(cleanup.FailedPaths, path);
+            Assert.AreEqual(replacementGuid, AssetDatabase.AssetPathToGUID(path));
         }
 
         [Test]
@@ -264,6 +309,7 @@ namespace Bento.Tests
         [Test]
         public void HistoryRecordFailureIsReportedWithoutThrowing()
         {
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("资产操作已成功，但持久历史保存失败"));
             var service = new AssetOperationHistoryService(
                 new FailingHistoryRepository(),
                 Array.Empty<IRecoverableAssetOperation>());
@@ -403,7 +449,7 @@ namespace Bento.Tests
                 Require(session.LastResult != null, "资源变体失败后未保留部分结果");
                 Require(session.LastResult.createdAssets.Count > 0, "资源变体失败样本没有产生可清理资源");
                 session.DeleteGeneratedAssets();
-                Require(session.LastResult.createdAssets.Count == 0, "资源变体失败产物未清理");
+                Require(session.LastResult == null, "资源变体失败产物未清理");
             }
             finally { UnityEngine.Object.DestroyImmediate(sourceObject); }
         }
@@ -447,6 +493,20 @@ namespace Bento.Tests
             {
                 _count++;
                 return _count == _failureNumber ? "intentional test failure" : AssetDatabase.MoveAsset(sourcePath, targetPath);
+            }
+        }
+
+        sealed class MoveThenFail : IAssetPathMover
+        {
+            bool _failed;
+
+            public string Move(string sourcePath, string targetPath)
+            {
+                string error = AssetDatabase.MoveAsset(sourcePath, targetPath);
+                if (!string.IsNullOrEmpty(error)) return error;
+                if (_failed) return string.Empty;
+                _failed = true;
+                return "intentional failure after move";
             }
         }
 

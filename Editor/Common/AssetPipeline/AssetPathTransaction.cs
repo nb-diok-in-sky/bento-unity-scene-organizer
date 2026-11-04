@@ -24,17 +24,24 @@ namespace Bento
             ValidateOperations(pending);
             completed.Clear();
 
+            AssetMoveHistoryEntry currentOperation = null;
             try
             {
                 foreach (var operation in pending)
                 {
+                    currentOperation = operation;
                     MoveAndVerify(operation.oldPath, operation.newPath, operation.guid);
                     completed.Add(operation);
+                    currentOperation = null;
                 }
                 Save();
             }
             catch (Exception operationException)
             {
+                if (currentOperation != null &&
+                    string.Equals(AssetDatabase.GUIDToAssetPath(currentOperation.guid), currentOperation.newPath,
+                        StringComparison.OrdinalIgnoreCase))
+                    completed.Add(currentOperation);
                 try
                 {
                     Restore(completed);

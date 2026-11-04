@@ -70,40 +70,76 @@ namespace Bento
             if (shader == null) throw new InvalidOperationException("找不到 Universal Render Pipeline/Lit。");
 
             var bindingList = bindings.Where(item => item.texture != null && item.role != FbxTextureRole.Ignore).ToList();
-            ConfigureImporters(bindingList);
+            var importerSettings = bindingList.Select(item =>
+            {
+                string path = AssetDatabase.GetAssetPath(item.texture);
+                var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+                return (path, textureType: importer?.textureType ?? TextureImporterType.Default,
+                    sRgb: importer?.sRGBTexture ?? true);
+            }).ToList();
             var material = new Material(shader) { name = fbx.name + "_Material" };
-            foreach (var binding in bindingList.Where(item => item.role != FbxTextureRole.PackedMask))
-            {
-                if (TryGetUrpProperty(binding.role, out string property) && material.HasProperty(property))
-                    material.SetTexture(property, binding.texture);
-            }
-
-            var packedMask = bindingList.FirstOrDefault(item => item.role == FbxTextureRole.PackedMask)?.texture;
             var generatedTextures = new List<string>();
-            if (packedMask != null)
-            {
-                var generated = PackForUrp(packedMask, maskLayout ?? new PackedMaskLayout(), folder, fbx.name);
-                generatedTextures.Add(generated.metallicPath);
-                generatedTextures.Add(generated.occlusionPath);
-                material.SetTexture("_MetallicGlossMap", generated.metallicSmoothness);
-                material.SetTexture("_OcclusionMap", generated.occlusion);
-            }
-            if (material.HasProperty("_SmoothnessTextureChannel")) material.SetFloat("_SmoothnessTextureChannel", 0f);
-            SetKeyword(material, "_NORMALMAP", "_BumpMap");
-            SetKeyword(material, "_METALLICSPECGLOSSMAP", "_MetallicGlossMap");
-            SetKeyword(material, "_OCCLUSIONMAP", "_OcclusionMap");
-            SetKeyword(material, "_EMISSION", "_EmissionMap");
-
             string materialPath = BentoUtility.GenerateUniqueAssetPath(folder, material.name, ".mat");
-            AssetDatabase.CreateAsset(material, materialPath);
+            var modelImporter = AssetImporter.GetAtPath(fbxPath) as ModelImporter;
+            var originalMaterialMap = modelImporter?.GetExternalObjectMap().ToList();
+            var originalImportMode = modelImporter?.materialImportMode ?? ModelImporterMaterialImportMode.ImportStandard;
+            bool remapStarted = false;
             try
             {
+                ConfigureImporters(bindingList);
+                foreach (var binding in bindingList.Where(item => item.role != FbxTextureRole.PackedMask))
+                {
+                    if (TryGetUrpProperty(binding.role, out string property) && material.HasProperty(property))
+                        material.SetTexture(property, binding.texture);
+                }
+                var packedMask = bindingList.FirstOrDefault(item => item.role == FbxTextureRole.PackedMask)?.texture;
+                if (packedMask != null)
+                {
+                    var generated = PackForUrp(packedMask, maskLayout ?? new PackedMaskLayout(), folder, fbx.name, generatedTextures);
+                    material.SetTexture("_MetallicGlossMap", generated.metallicSmoothness);
+                    material.SetTexture("_OcclusionMap", generated.occlusion);
+                }
+                if (material.HasProperty("_SmoothnessTextureChannel")) material.SetFloat("_SmoothnessTextureChannel", 0f);
+                SetKeyword(material, "_NORMALMAP", "_BumpMap");
+                SetKeyword(material, "_METALLICSPECGLOSSMAP", "_MetallicGlossMap");
+                SetKeyword(material, "_OCCLUSIONMAP", "_OcclusionMap");
+                SetKeyword(material, "_EMISSION", "_EmissionMap");
+                AssetDatabase.CreateAsset(material, materialPath);
+                remapStarted = true;
                 RemapAllMaterialSlots(fbxPath, material);
             }
             catch
             {
-                AssetDatabase.DeleteAsset(materialPath);
-                foreach (string path in generatedTextures) AssetDatabase.DeleteAsset(path);
+                if (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(materialPath))) AssetDatabase.DeleteAsset(materialPath);
+                else UnityEngine.Object.DestroyImmediate(material);
+                foreach (string path in generatedTextures)
+                    if (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(path))) AssetDatabase.DeleteAsset(path);
+                    else
+                    {
+                        string absolutePath = Path.GetFullPath(Path.Combine(Application.dataPath, "..", path));
+                        if (File.Exists(absolutePath)) File.Delete(absolutePath);
+                    }
+                foreach (var setting in importerSettings)
+                {
+                    var importer = AssetImporter.GetAtPath(setting.path) as TextureImporter;
+                    if (importer == null || importer.textureType == setting.textureType && importer.sRGBTexture == setting.sRgb) continue;
+                    importer.textureType = setting.textureType;
+                    importer.sRGBTexture = setting.sRgb;
+                    importer.SaveAndReimport();
+                }
+                if (remapStarted && modelImporter != null && originalMaterialMap != null)
+                {
+                    modelImporter = AssetImporter.GetAtPath(fbxPath) as ModelImporter;
+                    if (modelImporter != null)
+                    {
+                        foreach (var mapping in modelImporter.GetExternalObjectMap())
+                            modelImporter.RemoveRemap(mapping.Key);
+                        foreach (var mapping in originalMaterialMap)
+                            modelImporter.AddRemap(mapping.Key, mapping.Value);
+                        modelImporter.materialImportMode = originalImportMode;
+                        modelImporter.SaveAndReimport();
+                    }
+                }
                 throw;
             }
             return material;
@@ -133,9 +169,10 @@ namespace Bento
             string folder = Path.GetDirectoryName(fbxPath)?.Replace('\\', '/');
             texturesByFolder.TryGetValue(folder, out var texturePaths);
             texturePaths ??= new List<string>();
-            Texture2D baseColor = LoadFirst(texturePaths, "_A", "_Albedo", "_BaseColor");
-            Texture2D normal = LoadFirst(texturePaths, "_N", "_Normal");
-            Texture2D packed = LoadFirst(texturePaths, "_MSA", "_Mask", "_Packed");
+            string modelName = Path.GetFileNameWithoutExtension(fbxPath);
+            Texture2D baseColor = LoadFirst(texturePaths, modelName, "_A", "_Albedo", "_BaseColor");
+            Texture2D normal = LoadFirst(texturePaths, modelName, "_N", "_Normal");
+            Texture2D packed = LoadFirst(texturePaths, modelName, "_MSA", "_Mask", "_Packed");
             var missing = new List<string>();
             if (baseColor == null) missing.Add("A/BaseColor");
             if (normal == null) missing.Add("N/Normal");
@@ -148,10 +185,16 @@ namespace Bento
             };
         }
 
-        static Texture2D LoadFirst(IEnumerable<string> paths, params string[] suffixes)
+        static Texture2D LoadFirst(IEnumerable<string> paths, string modelName, params string[] suffixes)
         {
-            string path = paths.FirstOrDefault(candidate => suffixes.Any(suffix => Path.GetFileNameWithoutExtension(candidate).EndsWith(suffix, StringComparison.OrdinalIgnoreCase)));
+            string path = FindTexturePath(paths, modelName, suffixes);
             return string.IsNullOrEmpty(path) ? null : AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        }
+
+        internal static string FindTexturePath(IEnumerable<string> paths, string modelName, params string[] suffixes)
+        {
+            return paths.FirstOrDefault(candidate => suffixes.Any(suffix =>
+                string.Equals(Path.GetFileNameWithoutExtension(candidate), modelName + suffix, StringComparison.OrdinalIgnoreCase)));
         }
 
         static bool IsTexturePath(string path)
@@ -199,7 +242,7 @@ namespace Bento
         }
 
         static (Texture2D metallicSmoothness, Texture2D occlusion, string metallicPath, string occlusionPath) PackForUrp(
-            Texture2D source, PackedMaskLayout layout, string folder, string outputName)
+            Texture2D source, PackedMaskLayout layout, string folder, string outputName, List<string> generatedPaths)
         {
             var pixels = ReadPixels(source);
             var metallicPixels = new Color32[pixels.Length];
@@ -216,7 +259,9 @@ namespace Bento
 
             string metallicPath = BentoUtility.GenerateUniqueAssetPath(folder, outputName + "_MetallicSmoothness", ".png");
             string occlusionPath = BentoUtility.GenerateUniqueAssetPath(folder, outputName + "_Occlusion", ".png");
+            generatedPaths.Add(metallicPath);
             WritePng(metallicPath, source.width, source.height, metallicPixels);
+            generatedPaths.Add(occlusionPath);
             WritePng(occlusionPath, source.width, source.height, occlusionPixels);
             AssetDatabase.ImportAsset(metallicPath, ImportAssetOptions.ForceSynchronousImport);
             AssetDatabase.ImportAsset(occlusionPath, ImportAssetOptions.ForceSynchronousImport);

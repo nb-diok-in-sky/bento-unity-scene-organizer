@@ -131,6 +131,8 @@ namespace Bento
         public List<string> modelPaths = new List<string>();
         public List<string> materialPaths = new List<string>();
         public List<string> texturePaths = new List<string>();
+        public List<string> generatedAssetPaths = new List<string>();
+        public List<string> generatedAssetGuids = new List<string>();
     }
 
     [Serializable]
@@ -225,6 +227,7 @@ namespace Bento
     class ResourceVariantGenerationResult
     {
         public readonly List<string> createdAssets = new List<string>();
+        public readonly Dictionary<string, string> createdAssetGuids = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public readonly List<string> createdPrefabs = new List<string>();
         public readonly List<string> createdModels = new List<string>();
         public readonly List<string> createdMaterials = new List<string>();

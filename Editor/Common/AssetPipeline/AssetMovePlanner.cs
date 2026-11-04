@@ -93,9 +93,14 @@ namespace Bento
             ISet<string> reservedTargets)
         {
             string candidate = BuildTargetPath(entry, folder, targetName, extension);
-            if (!reservedTargets.Contains(candidate) && string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(candidate)))
-                return candidate;
-            return AssetDatabase.GenerateUniqueAssetPath(candidate);
+            for (int number = 0; number < 1000000; number++)
+            {
+                candidate = BuildTargetPath(entry, folder,
+                    number == 0 ? targetName : targetName + " " + number, extension);
+                if (!reservedTargets.Contains(candidate) && string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(candidate)))
+                    return candidate;
+            }
+            throw new InvalidOperationException($"无法为资源生成可用路径：{entry.sourcePath}");
         }
 
         static void ApplyTargets(

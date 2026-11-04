@@ -9,6 +9,7 @@ namespace Bento
     sealed class AssetSuffixCleanupEntry
     {
         public string path;
+        public string guid;
         public UnityEngine.Object asset;
         public bool include = true;
     }
@@ -21,6 +22,8 @@ namespace Bento
         List<AssetSuffixCleanupEntry> _entries = new();
         Vector2 _scroll;
         string _message;
+        string _scanFolder;
+        string _scanSuffixes;
 
         public void Draw()
         {
@@ -28,6 +31,12 @@ namespace Bento
             EditorGUILayout.HelpBox("递归扫描所选 Project 文件夹的全部层级。每行填写一个文件名结尾，例如 .max、.psd、_LOD0.fbx。先预览，再删除。", MessageType.Warning);
             _folder = BentoGUI.DrawProjectFolder("扫描文件夹", _folder, out string folder);
             _suffixes = EditorGUILayout.TextArea(_suffixes, GUILayout.MinHeight(62));
+            if (_entries.Count > 0 &&
+                (!string.Equals(folder, _scanFolder, StringComparison.OrdinalIgnoreCase) || _suffixes != _scanSuffixes))
+            {
+                _entries.Clear();
+                _message = "扫描条件已改变，请重新扫描。";
+            }
             bool canScan = BentoUtility.IsProjectFolder(folder) && ParseSuffixes().Count > 0;
             int selected = _entries.Count(entry => entry.include);
             using (new EditorGUILayout.HorizontalScope())
@@ -58,17 +67,23 @@ namespace Bento
         void Scan(string folder)
         {
             List<string> suffixes = ParseSuffixes();
+            _scanFolder = folder;
+            _scanSuffixes = _suffixes;
             _entries = AssetDatabase.FindAssets(string.Empty, new[] { folder }).Select(AssetDatabase.GUIDToAssetPath)
                 .Where(path => !AssetDatabase.IsValidFolder(path) && suffixes.Any(suffix => path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)))
                 .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .Select(path => new AssetSuffixCleanupEntry { path = path, asset = AssetDatabase.LoadMainAssetAtPath(path), include = true }).ToList();
+                .Select(path => new AssetSuffixCleanupEntry { path = path, guid = AssetDatabase.AssetPathToGUID(path), asset = AssetDatabase.LoadMainAssetAtPath(path), include = true }).ToList();
             _message = _entries.Count > 0 ? $"扫描完成：找到 {_entries.Count} 个匹配资产。" : "扫描完成：没有找到匹配文件。不需要单独填写 .meta。";
         }
 
         void DeleteSelected(string folder, int selected)
         {
+            if (!string.Equals(folder, _scanFolder, StringComparison.OrdinalIgnoreCase) || _suffixes != _scanSuffixes)
+                throw new InvalidOperationException("扫描条件已改变，请重新扫描。");
             var targets = _entries.Where(entry => entry.include).ToList();
             if (!BentoCommand.Confirm("删除匹配资产", $"将从 {folder} 及其子目录永久删除 {selected} 个资产。Unity 会同时删除对应 .meta。此操作不支持 Ctrl+Z。", "确认删除")) return;
+            if (targets.Any(entry => !string.Equals(AssetDatabase.AssetPathToGUID(entry.path), entry.guid, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("扫描后有资产发生变化，请重新扫描。");
             int deleted = 0;
             var failures = new List<string>();
             foreach (var entry in targets) { if (AssetDatabase.DeleteAsset(entry.path)) deleted++; else failures.Add(entry.path); }

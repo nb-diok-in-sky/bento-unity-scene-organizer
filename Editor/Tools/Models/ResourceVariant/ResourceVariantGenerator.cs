@@ -297,7 +297,9 @@ namespace Bento
                 texturePaths = CollectReferencedTexturePaths(
                     prefabPath,
                     result.createdTextures,
-                    result.createdTextures.Skip(textureStartIndex))
+                    result.createdTextures.Skip(textureStartIndex)),
+                generatedAssetPaths = result.createdAssets.ToList(),
+                generatedAssetGuids = result.createdAssets.Select(path => result.createdAssetGuids[path]).ToList()
             };
         }
 
@@ -423,6 +425,7 @@ namespace Bento
         static void AddCreatedAsset(ResourceVariantGenerationResult result, string path, List<string> typedList)
         {
             result.createdAssets.Add(path);
+            result.createdAssetGuids[path] = AssetDatabase.AssetPathToGUID(path);
             typedList.Add(path);
         }
 

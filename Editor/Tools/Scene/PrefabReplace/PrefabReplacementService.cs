@@ -85,6 +85,10 @@ namespace Bento
             var result = new PrefabBuildSceneReplacementResult();
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return result;
             string currentScene = SceneManager.GetActiveScene().path;
+            var loadedScenes = Enumerable.Range(0, SceneManager.sceneCount)
+                .Select(index => SceneManager.GetSceneAt(index).path)
+                .Where(path => !string.IsNullOrEmpty(path))
+                .ToList();
             try
             {
                 foreach (var entry in EditorBuildSettings.scenes.Where(scene => scene.enabled))
@@ -106,8 +110,20 @@ namespace Bento
             }
             finally
             {
-                if (!string.IsNullOrEmpty(currentScene) && File.Exists(currentScene))
-                    EditorSceneManager.OpenScene(currentScene, OpenSceneMode.Single);
+                if (loadedScenes.Count > 0)
+                {
+                    bool first = true;
+                    foreach (string path in loadedScenes.Where(File.Exists))
+                    {
+                        EditorSceneManager.OpenScene(path, first ? OpenSceneMode.Single : OpenSceneMode.Additive);
+                        first = false;
+                    }
+                    if (!string.IsNullOrEmpty(currentScene))
+                    {
+                        Scene restored = SceneManager.GetSceneByPath(currentScene);
+                        if (restored.IsValid()) SceneManager.SetActiveScene(restored);
+                    }
+                }
             }
         }
 

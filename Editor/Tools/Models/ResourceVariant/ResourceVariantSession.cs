@@ -178,13 +178,17 @@ namespace Bento
             var result = new ResourceVariantGenerationResult();
             foreach (ResourceVariantSourceRecord record in records)
             {
-                AddExisting(record.generatedPrefabPath, result.createdPrefabs, result.createdAssets);
+                var guids = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (record.generatedAssetPaths != null && record.generatedAssetGuids != null)
+                    for (int i = 0; i < Math.Min(record.generatedAssetPaths.Count, record.generatedAssetGuids.Count); i++)
+                        guids[record.generatedAssetPaths[i]] = record.generatedAssetGuids[i];
+                AddExisting(record.generatedPrefabPath, record.generatedPrefabGuid, result.createdPrefabs, result);
                 foreach (string path in record.modelPaths)
-                    AddExisting(path, result.createdModels, result.createdAssets);
+                    AddExisting(path, guids.TryGetValue(path, out string modelGuid) ? modelGuid : null, result.createdModels, result);
                 foreach (string path in record.materialPaths)
-                    AddExisting(path, result.createdMaterials, result.createdAssets);
+                    AddExisting(path, guids.TryGetValue(path, out string materialGuid) ? materialGuid : null, result.createdMaterials, result);
                 foreach (string path in record.texturePaths)
-                    AddExisting(path, result.createdTextures, result.createdAssets);
+                    AddExisting(path, guids.TryGetValue(path, out string textureGuid) ? textureGuid : null, result.createdTextures, result);
                 result.sourceRecords.Add(record);
             }
             result.processedObjectCount = result.createdPrefabs.Count;
@@ -193,16 +197,18 @@ namespace Bento
 
         static void AddExisting(
             string path,
+            string expectedGuid,
             List<string> typedPaths,
-            List<string> allPaths)
+            ResourceVariantGenerationResult result)
         {
-            if (string.IsNullOrEmpty(path) ||
-                string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(path)))
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(expectedGuid) ||
+                !string.Equals(AssetDatabase.AssetPathToGUID(path), expectedGuid, StringComparison.OrdinalIgnoreCase))
                 return;
             if (!typedPaths.Contains(path, StringComparer.OrdinalIgnoreCase))
                 typedPaths.Add(path);
-            if (!allPaths.Contains(path, StringComparer.OrdinalIgnoreCase))
-                allPaths.Add(path);
+            if (!result.createdAssets.Contains(path, StringComparer.OrdinalIgnoreCase))
+                result.createdAssets.Add(path);
+            result.createdAssetGuids[path] = expectedGuid;
         }
 
         static void ClearGeneratedAssetSelection(
@@ -228,6 +234,7 @@ namespace Bento
             result.createdModels.RemoveAll(deletedPaths.Contains);
             result.createdMaterials.RemoveAll(deletedPaths.Contains);
             result.createdTextures.RemoveAll(deletedPaths.Contains);
+            foreach (string path in deletedPaths) result.createdAssetGuids.Remove(path);
             if (result.createdAssets.Count == 0) result.replacements.Clear();
         }
     }
@@ -353,7 +360,14 @@ namespace Bento
             var cleanup = new ResourceVariantCleanupResult();
             foreach (string path in OrderedPaths(result))
             {
-                if (string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(path))) continue;
+                string currentGuid = AssetDatabase.AssetPathToGUID(path);
+                if (string.IsNullOrEmpty(currentGuid)) continue;
+                if (!result.createdAssetGuids.TryGetValue(path, out string expectedGuid) ||
+                    !string.Equals(currentGuid, expectedGuid, StringComparison.OrdinalIgnoreCase))
+                {
+                    cleanup.FailedPaths.Add(path);
+                    continue;
+                }
                 if (AssetDatabase.MoveAssetToTrash(path))
                 {
                     cleanup.Paths.Add(path);
